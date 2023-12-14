@@ -1,0 +1,9 @@
+ρ_a = 1.225                           # density
+η_a = 1.0e-5                            # viscosity
+μ_a = 1.0e25                             # shear modulus
+β_a = 1.0/141.0e3                         # compressibility
+
+#step0-...
+dt = 0.009792464198447896 s
+#smallerstep0-...
+dt = 9.790000000000004e-11 s
