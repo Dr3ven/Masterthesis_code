@@ -96,7 +96,7 @@ function conservative2D_ve()
     P0      = 1.0e5                               # pressure at rest
     beta    = 1.0/141.0e3                       # compressibility
     #beta_air      = 1.0e-6                         # compressibility
-    beta_solid    = 1.0e-10                      # compressibility
+    #beta_solid    = 1.0e-10                      # compressibility
     eta      = 1.81e-5                          # dynamic viscosity
     eta_air      = 1.0e-5                          # dynamic viscosity for air
     eta_solid    = 1.0e21                         # dynamic viscosity for solid
@@ -110,7 +110,7 @@ function conservative2D_ve()
     λ  = (2.0 * mu_solid * ν) / (1.0 - 2.0 * ν)     # Lamé parameter 2
     K_s = (2.0 * mu_solid * (1.0 + ν)) / (3.0 * (1.0 - 2.0 * ν))                # model poisson ratio of the solid
     beta_air  = 1.0/141.0e3                         # compressibility
-    β_s  = 1.0 / K_s 
+    beta_solid  = 1.0 / K_s 
 
     #K_air   = 1.0 / beta_air                     # bulk modulus of air
     #K_solid = 1.0 / beta_solid                   # bulk modulus of solid
@@ -321,25 +321,8 @@ function conservative2D_ve()
     maskVx_solid  = 1.0 .- maskVx_air
     maskVy_solid  = 1.0 .- maskVy_air
 
-    # mask for closed conduit and chamber completely surrounded by solid
-    #maskrho_closedchamber_solid .= maskrho_solid
-    #maskrho_closedchamber_solid[inpolyrho_cond .== 1.0] .= 1.0
-    #maskrho_closedchamber_air = 1.0 .- maskrho_closedchamber_solid
-    #maskμc_closedchamber_solid .= maskμc_solid
-    #maskμc_closedchamber_solid[inpolyμc_cond .== 1.0] .= 1.0
-    #maskμc_closedchamber_air = 1.0 .- maskμc_closedchamber_solid
-
-    # mask for flat topography 
-    #maskrho_closedchamber_solid .= maskrho_solid
-    #maskrho_closedchamber_solid[inpolyrho_cond .== 1.0] .= 1.0
-    #maskrho_closedchamber_air = 1.0 .- maskrho_closedchamber_solid
-    #maskμc_closedchamber_solid .= maskμc_solid
-    #maskμc_closedchamber_solid[inpolyμc_cond .== 1.0] .= 1.0
-    #maskμc_closedchamber_air = 1.0 .- maskμc_closedchamber_solid
-
     x_circ_ind = []
     y_circ_ind = []
-
 
     for y= 2:size(maskrho_air)[1] - 1
         for x = 2:size(maskrho_air)[2] - 1
@@ -359,28 +342,9 @@ function conservative2D_ve()
         end
     end
 
-    #for y= 2:size(maskrho_closedchamber_air)[1] - 1
-    #    for x = 2:size(maskrho_closedchamber_air)[2] - 1
-    #        if (maskrho_closedchamber_air[x, y] == 0.0 && abs(maskrho_closedchamber_air[x, y] - maskrho_closedchamber_air[x - 1, y]) == 1.0)
-    #            push!(x_circ_ind, x)
-    #            push!(y_circ_ind, y)
-    #        elseif (maskrho_closedchamber_air[x, y] == 0.0 && abs(maskrho_closedchamber_air[x, y] - maskrho_closedchamber_air[x + 1, y]) == 1.0 )
-    #            push!(x_circ_ind, x)
-    #            push!(y_circ_ind, y)
-    #        elseif (maskrho_closedchamber_air[x, y] == 0.0 && abs(maskrho_closedchamber_air[x, y] - maskrho_closedchamber_air[x, y - 1]) == 1.0)
-    #            push!(x_circ_ind, x)
-    #            push!(y_circ_ind, y)
-    #        elseif (maskrho_closedchamber_air[x, y] == 0.0 && abs(maskrho_closedchamber_air[x, y] - maskrho_closedchamber_air[x, y + 1]) == 1.0)
-    #            push!(x_circ_ind, x)
-    #            push!(y_circ_ind, y)
-    #        end
-    #    end
-    #end
-
-
     # Initial conditions
     #@. β      += beta_air * (maskrho_air == 1.0) + beta_solid * (maskrho_solid == 1.0)                  # initial viscosity distribution  
-    @. β      += βa_non# * (maskrho_closedchamber_air == 1.0) + βs_non * (maskrho_closedchamber_solid == 1.0)                  # initial viscosity distribution  
+    @. β      += βa_non                                                                                   # initial viscosity distribution  
 
     P         .= (P_non.*exp.(-g_non.*(y2dc_non[1:end-1, 1:end-1].+1.0./5.0.*L_non).*M_non ./ T_non ./ R_non))# .* maskrho_closedchamber_air .+ reverse(cumsum(ρs_non.* g_non .* reverse(maskrho_solid, dims=2)*dy_non,dims=2), dims=2)                             # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
 
@@ -390,21 +354,16 @@ function conservative2D_ve()
     #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= rho0#.+drho          # initial density of the conduit overlapping with the circular chamber (so in the chamber)
     #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.15.*Ly).*drho./(-0.15.-(locY.+diam./2.0)).+rho0    # initial density in the conduit
     #P .= reverse(cumsum(rho_solid.*g.*reverse(test, dims=2)*dy_non,dims=2), dims=2)
-    #P[radrho .< diam ./ 2.0]         .= (P_non .* rho[radrho .< diam ./ 2.0]) ./ ρa_non #.+ (rho[radrho .< diam ./ 2.0] .* g .* depth[radrho .< diam ./ 2.0])#P0 ./ rho0 .* rho
+    P[radrho .< diam ./ 2.0]         .= (P_non .* rho[radrho .< diam ./ 2.0]) ./ ρa_non #.+ (rho[radrho .< diam ./ 2.0] .* g .* depth[radrho .< diam ./ 2.0])#P0 ./ rho0 .* rho
     #P         .+=(P0 .+  (1.0 ./ beta) .* log.(rho ./ rho_solid)) .* maskrho_solid
 
 
     # Initial parameter matrices for both phases
-    #@. η += eta_air * (maskrho_air[2:end-1, 2:end-1] == 1.0) + eta_solid * (maskrho_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
-    #@. μ += mu_air * (maskrho_air[2:end-1, 2:end-1] == 1.0) + mu_solid * (maskrho_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
+    @. η += ηa_non# * (maskrho_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
+    @. μ += μa_non# * (maskrho_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
     
-    @. η += ηa_non# * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
-    @. μ += μa_non# * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
-
-    #@. η_c += eta_air * (maskμc_air == 1.0) + eta_solid * (maskμc_solid == 1.0)   # initial viscosity distribution for corner nodes
-    @. η_c += ηa_non# * (maskμc_closedchamber_air == 1.0) + ηs_non * (maskμc_closedchamber_solid == 1.0)   # initial viscosity distribution for corner nodes
-    #@. μ_c += mu_air * (maskμc_air == 1.0) + mu_solid * (maskμc_solid == 1.0)     # initial viscosity distribution for corner nodes
-    @. μ_c += μa_non# * (maskμc_closedchamber_air == 1.0) + μs_non * (maskμc_closedchamber_solid == 1.0)     # initial viscosity distribution for corner nodes
+    @. η_c += ηa_non# * (maskμc_air == 1.0) + ηs_non * (maskμc_solid == 1.0)   # initial viscosity distribution for corner nodes
+    @. μ_c += μa_non# * (maskμc_air == 1.0) + μs_non * (maskμc_solid == 1.0)     # initial viscosity distribution for corner nodes
 
     # Inital plot 
     P_dim  = ustrip(dimensionalize(P, Pa, CharDim))
@@ -438,7 +397,7 @@ function conservative2D_ve()
     end=#
     #poly!(ax,points_XpYp)
     #lines!(ax, Xp, Yp, color = :white) # only conduit
-    scatter!(ax, x_circ, y_circ, color = :white, markersize=4.0) # conduit and chamber
+    #scatter!(ax, x_circ, y_circ, color = :white, markersize=4.0) # conduit and chamber
     display(fig)
     if save_plt
         mkdir(path)
@@ -465,8 +424,8 @@ function conservative2D_ve()
         err_vec = zeros(Float64, 1000, 5) .* NaN
         while err > 1.0e-3 #&& iter < 25*360
             iter += 1
-            #@timeit "compute beta" beta_vec .= 1.0 ./ P
-            c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* β[2:end-1,2:end-1])                                                    # local speed of sound
+            beta_vec .= 1.0 ./ P
+            c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1])                                                    # local speed of sound
             dt = minimum([dx_non./maximum(abs.(Vx)), dy_non./maximum(abs.(Vy)), min(dx_non, dy_non) .* sqrt(maximum(rho .* β)), min(dx_non, dy_non).^2.0./maximum(η)]).*4.1 # time step size  
             dtPT .= min.(min.(min.(dx_non ./ abs.(av_x(Vx[:, 2:end-1])), dx_non ./ abs.(av_y(Vy[2:end-1, :]))), min(dx_non, dy_non).^2.0 ./ η), dx_non ./ c_loc) # time step size for pressure and temperature
             dtrho .= 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx_non, dy_non) ./ c_loc ./ 4.1))                                                         # time step size for density
@@ -487,10 +446,10 @@ function conservative2D_ve()
 
             # Strain-rates and stresses
             P = zeros(Float64, nx + 2, ny + 2)
-            #@timeit "compute P" P              .+= ((1.0 ./ β) .* log.(rho ./ ρs_non) .+ P_non) .* maskrho_solid             # equation of state for pressure depending on density
-            #@timeit "compute P" P              .+= ((P_non .* rho) ./ ρa_non ).* maskrho_air                                              # equation of state for pressure depending on density            
+            #P              .+= ((1.0 ./ β) .* log.(rho ./ ρs_non) .+ P_non) .* maskrho_solid             # equation of state for pressure depending on density
+            #P              .+= ((P_non .* rho) ./ ρa_non ).* maskrho_air                                              # equation of state for pressure depending on density            
             #P              .+= ((1.0 ./ β) .* log.(rho ./ ρs_non) .+ P_non) .* maskrho_closedchamber_solid             # equation of state for pressure depending on density
-            P              .+= ((P_non .* rho) ./ ρa_non)#.* maskrho_closedchamber_air                                              # equation of state for pressure depending on density            
+            P              .+= ((P_non .* rho) ./ ρa_non) #.* maskrho_closedchamber_air                                              # equation of state for pressure depending on density            
             divV         .= diff(Vx[:,2:end-1], dims=1)./dx_non .+ diff(Vy[2:end-1,:], dims=2)./dy_non                                             # divergence of velocity
             Exx          .= diff(Vx[:,2:end-1], dims=1)./dx_non .- 1.0./3.0.*divV                                                               # strain-rate in x-direction
             Eyy          .= diff(Vy[2:end-1,:], dims=2)./dy_non .- 1.0./3.0.*divV                                                               # strain-rate in y-direction
@@ -504,9 +463,7 @@ function conservative2D_ve()
             #Syy[152, 17]                        = (t_non - t0_non >= 0.0) * ((t_non - t0_non)/td_non^2.0 * exp(-(t_non - t0_non)/td_non))
             #Sxy[152, 17]                        = (time - t0 >= 0.0) * ((time - t0)/t_d^2.0 * exp(-(time - t0)/t_d))
             dtV           = 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx_non, dy_non).^2.0 ./ maximum(η) ./ 4.0)) .* CFL_V                                           # time step size for velocity
-            #if iter == 1 
-            #    @infiltrate
-            #end
+
             # Conservation of the x-component of momentum
             Mx             .= av_x(rho).*Vx                                                             # momentum in x-direction
             FMxx         .= (av_x(Vx[ :     ,2:end-1]).> 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[1:end-1,2:end-1] .+ (av_x(Vx[ :     ,2:end-1]).< 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[2:end  ,2:end-1]  # mass flux in x-direction (upwind scheme)
@@ -532,7 +489,7 @@ function conservative2D_ve()
             FMyy         .= (av_y(Vy[2:end-1, :     ]).> 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,1:end-1] .+ (av_y(Vy[2:end-1, :     ]).< 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,2:end  ]  # mass flux in y-direction
             FMyx         .= (av_y(Vx[ :     ,2:end-1]).> 0.0).*av_y(Vx[ :     ,2:end-1]).*My[1:end-1,2:end-1] .+ (av_y(Vx[ :     ,2:end-1]).< 0.0).*av_y(Vx[ :     ,2:end-1]).*My[2:end  ,2:end-1]  # mass flux in x-direction
             dMydt       .= (My-My_old)./dt                                                                                              # time derivative of momentum in y-direction
-            MyRes      .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- Syy,dims=2)./dy_non .- diff(FMyx .- Sxy[:,2:end-1],dims=1)./dx_non - g_non .* av_y(rho[2:end-1,2:end-1]) # drunken sailor chapter taras book: dt .* (av_xy(Vx[:, 2:end-1]) .* av_y(diff(rho[2:end,2:end-1], dims=1)) .+ Vy[2:end-1, 2:end-1] .* diff(rho[2:end-1,2:end-1], dims=2))
+            MyRes      .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- Syy,dims=2)./dy_non .- diff(FMyx .- Sxy[:,2:end-1],dims=1)./dx_non - g_non .* ((Vy[2:end-1, 2:end-1] .> 0.0) .* rho[2:end-1,2:end-2] .+ ((Vy[2:end-1, 2:end-1] .< 0.0) .* rho[2:end-1,3:end-1])) # drunken sailor chapter taras book: dt .* (av_xy(Vx[:, 2:end-1]) .* av_y(diff(rho[2:end,2:end-1], dims=1)) .+ Vy[2:end-1, 2:end-1] .* diff(rho[2:end-1,2:end-1], dims=2))
             dMydtau   .= MyRes .+ dMydtau.*ksi                                                                                      # stress derivative of momentum in y-direction
             My[2:end-1,2:end-1]  .= My[2:end-1,2:end-1] .+ dMydtau.*av_y(dtPT).*CFL_V                                                     # updating momentum in y-direction
             Vy             .= My./av_y(rho)                   # updating velocity in y-direction
