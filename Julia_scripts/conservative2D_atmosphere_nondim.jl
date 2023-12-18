@@ -1,5 +1,4 @@
 using CairoMakie
-using TimerOutputs
 using Infiltrator
 using GeoParams
 
@@ -88,11 +87,11 @@ function conservative2D_ve()
     Lx        = 1.0e4                             # length of domain in x-direction
     Ly        = Lx                                # length of domain in y-direction
     rho0      = 1.225                               # density of air
-    drho      = 2.7e3                               # density magma chamber
+    drho      = 2.0#.7e3                               # density magma chamber
     Vx0       = 0.0                               # starting velocity in x-direction
     P0        = 1.0e5                               # pressure at rest
     beta_air  = 1.0/141.0e3                       # compressibility
-    eta_air   = 1.0e-5                          # dynamic viscosity for air
+    eta_air   = 1.81e-5                          # dynamic viscosity for air
     mu_air    = 1.0e25                           # shear modulus for air
     g_y       = 9.81                             # gravitational acceleration
 
@@ -297,9 +296,9 @@ function conservative2D_ve()
     # Initial conditions
     @. β      += βa_non                  # initial viscosity distribution  
     P         .= (P_non.*exp.(-g_non.*(y2dc_non[1:end-1, 1:end-1].+1.0./5.0.*L_non).*M_non ./ T_non ./ R_non)) #.+ reverse(cumsum(ρs_non.* g_non .* reverse(maskrho_solid, dims=2)*dy_non,dims=2), dims=2)                             # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
-    rho       .= (ρa_non .* P) ./ P_non                                     # equation of state for density depending on pressure
+    rho       .= (ρa_non .* P) ./ P_non .* maskrho_air                                    # equation of state for density depending on pressure
     rho[radrho .< diam ./ 2.0] .= ρa_non .+ ρc_non                                                          # initial density in the circle
-    P         .= P_non ./ ρa_non .* rho; 
+    P         .= P_non ./ ρa_non .* rho .* maskrho_air
 
 
 
@@ -318,7 +317,7 @@ function conservative2D_ve()
     yc_dim = ustrip(dimensionalize(Yc_non, m, CharDim))
     
     fig = Figure()
-    ax = Axis(fig[1, 1], xticks=([-500, 0, 500], ["-500", "0", "500"]), yticks=([-500, 0, 500], ["-500", "0", "500"]),
+    ax = Axis(fig[1, 1], xticks=([-5000, 0, 5000], ["-5000", "0", "5000"]), yticks=([-5000, 0, 5000], ["-5000", "0", "5000"]),
                 yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)#, title="0")
 
     x_circ = zeros(length(x_circ_ind))
@@ -370,12 +369,13 @@ function conservative2D_ve()
         dMydtau .= 0.0                                              # stress derivative of momentum in y-direction
         err_vec = zeros(Float64, 1000, 5) .* NaN
         while err > 1.0e-3 #&& iter < 25*360
-            iter += 1
-            beta_vec .= 1.0 ./ P
-            c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1])                                                    # local speed of sound
-            if it % 50 == 0
+            if it % 1 == 0
                 @infiltrate
             end
+            iter += 1
+            #beta_vec .= 1.0 ./ P .* maskrho_air
+            c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1])                                                    # local speed of sound
+            
             dt = minimum([dx_non./maximum(abs.(Vx)), dy_non./maximum(abs.(Vy)), min(dx_non, dy_non) .* sqrt(maximum(rho .* beta_vec)), min(dx_non, dy_non).^2.0./maximum(η)]).*4.1 # time step size  
             dtPT .= min.(min.(min.(dx_non ./ abs.(av_x(Vx[:, 2:end-1])), dx_non ./ abs.(av_y(Vy[2:end-1, :]))), min(dx_non, dy_non).^2.0 ./ η), dx_non ./ c_loc) # time step size for pressure and temperature
             dtrho .= 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx_non, dy_non) ./ c_loc ./ 4.1))                                                         # time step size for density
@@ -397,7 +397,7 @@ function conservative2D_ve()
 
             # Strain-rates and stresses
             P = zeros(Float64, nx + 2, ny + 2)
-            P           .+= ((P_non .* rho) ./ ρa_non)                                                                                         # equation of state for pressure depending on density            
+            P           .+= ((P_non .* rho) ./ ρa_non) .* maskrho_air                                                                                        # equation of state for pressure depending on density            
             divV         .= diff(Vx[:,2:end-1], dims=1)./dx_non .+ diff(Vy[2:end-1,:], dims=2)./dy_non                                             # divergence of velocity
             Exx          .= diff(Vx[:,2:end-1], dims=1)./dx_non .- 1.0./3.0.*divV                                                               # strain-rate in x-direction
             Eyy          .= diff(Vy[2:end-1,:], dims=2)./dy_non .- 1.0./3.0.*divV                                                               # strain-rate in y-direction
@@ -449,7 +449,7 @@ function conservative2D_ve()
             My[:,end]    .= My[:,end-1]
 
 
-            if mod(iter, 50) == 0
+            if mod(iter, 1) == 0
                 it_counter += 1
                 err = maximum(abs.([rhoRes[:]; MxRes[:]; MyRes[:]]))
                 print("PT_iter = $iter, err = $err, rhoRes = $(maximum(abs.(rhoRes[:]))), MxRes = $(maximum(abs.(MxRes[:]))), MyRes = $(maximum(abs.(MyRes[:])))\n")
@@ -490,6 +490,7 @@ function conservative2D_ve()
 
         # Updating plot
         if mod(it-1, 1) == 0
+            
             Vy_dim = dimensionalize(Vy, m/s, CharDim)
             Vx_dim = dimensionalize(Vx, m/s, CharDim)
             Vx_av = av_x(ustrip(Vx_dim))
