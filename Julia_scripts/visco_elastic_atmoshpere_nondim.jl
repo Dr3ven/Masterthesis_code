@@ -275,12 +275,12 @@ end
     #dt = #=1.0e-23=# min(min(dx, dy) / ca_non / 4.5, min(dx^2.0, dy^2.0) / ((4.0 / 3.0) * η_ / ρa_non) / 4.5)        # time step size                       
     #Δt = dx / sqrt(α^2.0 + ξ^2.0) 
     #dt2 = min(Δt)
-    c = sqrt(1.0./ βa_non ./ ρa_non)                                                              # speed of sound / p-wave velocity
-    dt = min(min(min(dx_non, dy_non) .* sqrt.(maximum(ρ .* β)), min(dx_non, dy_non).^2.0 ./ ηa_non) .* 4.5,  dx_non ./ c)        # time step size
+    c = sqrt(1.0 / βa_non / ρa_non)                                                              # speed of sound / p-wave velocity
+    dt = 5e-15 #min(min(min(dx_non, dy_non) .* sqrt.(maximum(ρ .* β)), min(dx_non, dy_non).^2.0 ./ ηa_non) .* 4.5,  dx_non ./ c)        # time step size
 
 
-    P .= P_non .* exp.(.-g_non .* (y2dc_non2 .+ 1.0 ./ 5.0 .* L_non) .* M_non ./ T_non ./ R_non)
-    P .+= P_non .+ exp.((.-0.005 .* ((xc_non)./ 1.0).^2.0) .+ (.-0.005 .* ((yc_non) ./ 1.0)'.^2.0))          # initial pressure distribution
+    #P .= P_non .* exp.(.-g_non .* (y2dc_non2 .+ 1.0 ./ 5.0 .* L_non) .* M_non ./ T_non ./ R_non)
+    P .+= P_non .+ 0.001 .* exp.((.-0.005 .* ((xc_non)./ 1.0).^2.0) .+ (.-0.005 .* ((yc_non) ./ 1.0)'.^2.0))          # initial pressure distribution
 
     #@. ρ    += ρa_non * (maskrho_air == 1.0) + (maskrho_solid  == 1.0) * ρs_non                 # density
     #@. ρ     = (ρa_non / P_non) * P 
@@ -328,7 +328,7 @@ end
     #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
     #sur2 = surface!(ax3, xc_vec, yc_vec, P)
     display(fig)
-    #save(".\\Plots\\Earthquake_2\\0.png", fig)
+    save("../Plots/Error_pictures/visco_elastic_atmosphere_upwind/little_smaller_dt/sim1_step0.png", fig)
 
     for i = 1:nt 
         β .= 1.0 ./ P
@@ -382,24 +382,26 @@ end
             P_plt = ustrip(dimensionalize(P, Pa, CharDim))
             t_dim = dimensionalize(t, s, CharDim)
 
-            fig1 = Figure(resolution=(2000,2000))
-            ax1 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
-                    yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
-            ax2 = Axis(fig1[2,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
+            fig1 = Figure()
+            #fig1 = Figure(resolution=(2000,2000))
+            #ax1 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
+            #        yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
+            ax2 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
                     yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
 
             #lines!(ax2, xc_vec, P[:, Int(nx/2)])
-            hm1 = heatmap!(ax1, xc_dim, yc_dim, P_plt, colormap=Reverse(:roma))#, colorrange=(P0, maximum(P)))
+            #hm1 = heatmap!(ax1, xc_dim, yc_dim, P_plt, colormap=Reverse(:roma))#, colorrange=(P0, maximum(P)))
             hm2 = heatmap!(ax2, xc_dim, yc_dim, data_plt, colormap=Reverse(:roma))#, colorrange=(0, 8.0e-7))#, colorrange=(0.0, 1.0))
             #scatter!(ax2, x_circ, y_circ, color=:white, markersize=4.0)
-            Colorbar(fig1[1,2], hm1, label="Pressure", labelsize=25, ticklabelsize=25)#, vertical=false)
-            Colorbar(fig1[2,2], hm2, label="Velocity", labelsize=25, ticklabelsize=25)#, vertical=false)
+            #Colorbar(fig1[1,2], hm1, label="Pressure [Pa]", labelsize=25, ticklabelsize=25)#, vertical=false)
+            Colorbar(fig1[1,2], hm2, label="Velocity [m/s]", labelsize=25, ticklabelsize=25)#, vertical=false)
             #ax3 = Axis3(fig2[1,2][1,1], title="time = $t")
             #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
             #sur2 = surface!(ax3, xc_vec, yc_vec, P)
             display(fig1)
-            #save(".\\Plots\\Earthquake_2\\$(i).png", fig2)
-
+            save("../Plots/Error_pictures/visco_elastic_atmosphere_upwind/little_smaller_dt/sim1_step$i.png", fig1)
+            
         end
     end
+    cp("visco_elastic_atmoshpere_nondim.jl", "../Plots/Error_pictures/visco_elastic_atmosphere_upwind/little_smaller_dt/visco_elastic_atmoshpere_nondim.jl")
 end
