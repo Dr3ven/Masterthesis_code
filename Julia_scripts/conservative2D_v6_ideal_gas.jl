@@ -1,5 +1,4 @@
 using CairoMakie
-using TimerOutputs
 
 function meshgrid(x, y)
     X = [i for i in x, j in 1:length(y)]
@@ -218,8 +217,8 @@ function conservative2D()
 
     # Inital plot
     
-    global fig = Figure()
-    global ax = Axis(fig[1, 1], title="0")
+    fig = Figure()
+    ax = Axis(fig[1, 1], title="0")
     p1 = heatmap!(ax, x2dc, y2dc, P, shading=false) # shading("flat"), hold(true)
     Colorbar(fig[1, 2], p1, label="Pressure [Pa]")
     points_XpYp = Point2f[]
@@ -360,10 +359,8 @@ function conservative2D()
             #poly!(ax,points_XpYp)
             
             stepsize = 5
-            arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white)
+            #arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white)
             display(fig)
         end
-    end
-    print_timer()
-    
+    end    
 end

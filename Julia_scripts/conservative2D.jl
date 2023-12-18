@@ -1,5 +1,4 @@
 using CairoMakie
-using TimerOutputs
 
 function meshgrid(x, y)
     X = [i for i in x, j in 1:length(y)]
@@ -233,7 +232,6 @@ function conservative2D()
     #My        .= av_y(rho).*Vy  # initial momentum in y-direction
     #rhoRes    .= zero.(rho[2:end-1,2:end-1])      # residual of density
 
-    reset_timer!()
     @inbounds for it = 1:300
         @show it
         rho_old .= rho                                               # save old density values for time integration
@@ -295,7 +293,7 @@ function conservative2D()
             # Mx[1,:]      .= Mx[2,:]
             # Mx[end,:]    .= Mx[end-1,:]
             
-            @timeit "compute Vx" Vx           .= Mx./av_x(rho)                                                              # velocity in x-direction
+            Vx           .= Mx./av_x(rho)                                                              # velocity in x-direction
             Vx[1,:]                           .= Vx0
             Vx[end,:]                         .= Vx0
             
@@ -373,6 +371,5 @@ function conservative2D()
             #save("images\\$it_counter.png", fig)
         end
     end
-    print_timer()
     
 end
