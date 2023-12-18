@@ -84,7 +84,7 @@ function conservative2D()
     Lx      = 1.0e4                             # length of domain in x-direction
     Ly      = Lx                                # length of domain in y-direction
     rho0    = 1.225                             # density at rest
-    drho    = 2.0                             # density difference
+    drho    = 3.0e2                             # density difference
     Vx0     = 0.0                                 # starting velocity in x-direction
     P0      = 1.0e5                             # pressure at rest
     beta    = 1.0/141.0e3                       # compressibility
@@ -92,8 +92,8 @@ function conservative2D()
     g       = 9.81                              # gravitational acceleration
 
     # Numerics
-    nx      = 281                               # number of nodes in x-direction
-    ny      = 281                               # number of nodes in y-direction
+    nx      = 141                               # number of nodes in x-direction
+    ny      = 141                               # number of nodes in y-direction
     dx      = Lx/(nx)                           # grid spacing in x-direction
     dy      = Ly/(ny)                           # grid spacing in y-direction
     #nout    = 1
@@ -109,7 +109,7 @@ function conservative2D()
     c_loc   = zeros(Float64, nx, ny)
     dtPT    = zeros(Float64, nx, ny)
     dtrho   = zeros(Float64, nx, ny)
-    Frhox   =  zeros(Float64, nx + 1, ny + 2)
+    Frhox   = zeros(Float64, nx + 1, ny + 2)
     Frhoy   = zeros(Float64, nx + 2, ny + 1)
     drhodt  = zeros(Float64, nx + 2, ny + 2)
     rhoRes  = zeros(Float64, nx, ny)
@@ -232,12 +232,12 @@ function conservative2D()
     lines!(ax, Xp, Yp, color = :white)
     display(fig)
     
-    Vy        .= 0.0 .* Vx0 ./ 1.0 .* exp.(-1.0e3 * ((x2dVy .- (locX .+ 1.5 .* diam)).^2.0 .+ y2dVy.^2.0)) # initial velocity in y-direction
-    Mx        .= av_x(rho).*Vx  # initial momentum in x-direction
-    My        .= av_y(rho).*Vy  # initial momentum in y-direction
+    #Vy        .= 0.0 .* Vx0 ./ 1.0 .* exp.(-1.0e3 * ((x2dVy .- (locX .+ 1.5 .* diam)).^2.0 .+ y2dVy.^2.0)) # initial velocity in y-direction
+    #Mx        .= av_x(rho).*Vx  # initial momentum in x-direction
+    #My        .= av_y(rho).*Vy  # initial momentum in y-direction
     # rho_ini   .= sum(rho[2:end-1]);
     # Mx_ini    .= sum(Mx);
-    rhoRes    .= zero.(rho[2:end-1,2:end-1])      # residual of density
+    #rhoRes    .= zero.(rho[2:end-1,2:end-1])      # residual of density
 
     time = 0.0
     
@@ -282,18 +282,18 @@ function conservative2D()
             Exy          .= 0.5.*(diff(Vy,dims=1)./dx .+ diff(Vx,dims=2)./dx)                                                             # shear strain-rate in xy-direction
             Sxx          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Exx                                                                          # total stress (dani class 5 equation)
             Syy          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Eyy                                                                          # total stress
-            Sxy          .=                       2.0.*mu.*Exy                                                                            # total stress
+            Sxy          .=                         2.0.*mu.*Exy                                                                            # total stress
             Szz          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Ezz                                                                           # stress in z-direction
             dtV           = 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx,dy).^2.0 ./ mu ./ 4.0)) .* CFL_V                                           # time step size for velocity
             
             # Conservation of the x-component of momentum
-            Mx             .= av_x(rho).*Vx                                                             # momentum in x-direction
+            Mx           .= av_x(rho).*Vx                                                             # momentum in x-direction
             FMxx         .= (av_x(Vx[ :     ,2:end-1]).> 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[1:end-1,2:end-1] .+ (av_x(Vx[ :     ,2:end-1]).< 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[2:end  ,2:end-1]  # upwind advective momentum flux
             FMxy         .= (av_x(Vy[2:end-1, :     ]).> 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,1:end-1] .+ (av_x(Vy[2:end-1, :     ]).< 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,2:end  ]  # upwind advective momentum flux
-            dMxdt       .= (Mx.-Mx_old)./dt                                                                                             # time derivative of momentum in x-direction
-            MxRes      .= .-dMxdt[2:end-1,2:end-1] .- diff((FMxx .- Sxx),dims=1)./dx .- diff(FMxy .- Sxy[2:end-1,:],dims=2)./dy       # updating residual of momentum in x-direction
-            MxRes      .= MxRes.*maskVx_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in x-direction
-            dMxdtau   .= MxRes .+ dMxdtau .* ksi                                                                                    # stress derivative of momentum in x-direction
+            dMxdt        .= (Mx.-Mx_old)./dt                                                                                             # time derivative of momentum in x-direction
+            MxRes        .= .-dMxdt[2:end-1,2:end-1] .- diff((FMxx .- Sxx),dims=1)./dx .- diff(FMxy .- Sxy[2:end-1,:],dims=2)./dy       # updating residual of momentum in x-direction
+            MxRes        .= MxRes.*maskVx_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in x-direction
+            dMxdtau      .= MxRes .+ dMxdtau .* ksi                                                                                    # stress derivative of momentum in x-direction
             Mx[2:end-1,2:end-1]  .= Mx[2:end-1,2:end-1] .+ dMxdtau.*av_x(dtPT).*CFL_V                                                     # updating momentum in x-direction
             # BC fixed walls (normal velocity = 0)
             Mx[:,1]      .= Mx[:,2]
@@ -315,6 +315,8 @@ function conservative2D()
             MyRes      .= MyRes.*maskVy_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in y-direction
             dMydtau   .= MyRes .+ dMydtau.*ksi                                                                                      # stress derivative of momentum in y-direction
             My[2:end-1,2:end-1]  .= My[2:end-1,2:end-1] .+ dMydtau.*av_y(dtPT).*CFL_V                                                     # updating momentum in y-direction
+            Vy             .= My./av_y(rho)                                                                # updating velocity in y-direction
+            
             # BC fixed walls (normal velocity = 0)
             My[1,:]      .= -My[2,:]
             My[end,:]    .= -My[end-1,:]
@@ -322,7 +324,6 @@ function conservative2D()
             My[:,1]      .= My[:,2]
             My[:,end]    .= My[:,end-1]
 
-            Vy             .= My./av_y(rho)                                                                # updating velocity in y-direction
 
             if mod(iter, 25) == 0
                 it_counter += 1
@@ -342,25 +343,26 @@ function conservative2D()
         # Updating plot
         if mod(it-1, 1) == 0
             #global fig = fig
-            fig = Figure()
+            fig1 = Figure()
             #global ax = ax
-            ax = Axis(fig[1,1], title="time = $time")
+            ax = Axis(fig1[1,1], title="time = $time", yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)
 
             X = av_xy(x2dc)
             Y = av_xy(y2dc)
             U = av_y(Vx)
             V = av_x(Vy)
+            data_plt = sqrt.(U.^2 .+ V.^2)
 
-            # hm = heatmap!(ax, x2dc, y2dc, P, shading=false, colorrange=(P0, P0*2))
-            hm = heatmap!(ax, av_x(Xc), av_y(Yc), sqrt.(U.^2 .+ V.^2), shading=false, colorrange=(0.0, 350))
-            #c = Colorbar(fig[1,2],  hm, label="Pressure [Pa]")
-            c = Colorbar(fig[1,2],  hm, label="velocity [m/s]")
+            # hm = heatmap!(ax, x2dc, y2dc, P, shading=false, colormap=Reverse(:roma), colorrange=(P0, P0*2))
+            hm = heatmap!(ax, X, Y, data_plt, shading=false, colormap=Reverse(:roma), colorrange=(0.0, 350))
+            #Colorbar(fig1[1,2],  hm, label="Pressure [Pa]")
+            Colorbar(fig1[1,2],  hm, label="Velocity [m/s]")
             lines!(ax, Xp, Yp, color = :white)
             #poly!(ax,points_XpYp)
             
             stepsize = 5
             #arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white)
-            display(fig)
+            display(fig1)
         end
     end    
 end
