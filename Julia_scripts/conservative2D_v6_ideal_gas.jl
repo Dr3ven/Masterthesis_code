@@ -240,9 +240,8 @@ function conservative2D()
     # Mx_ini    .= sum(Mx);
     rhoRes    .= zero.(rho[2:end-1,2:end-1])      # residual of density
 
-    global time = 0.0
+    time = 0.0
     
-    reset_timer!()
     @inbounds for it = 1:100
         @show it
         rho_old .= rho                                               # save old density values for time integration
@@ -255,22 +254,19 @@ function conservative2D()
         dMydtau .= 0.0                                              # stress derivative of momentum in y-direction
         while err > 1.0e-3
             iter += 1
-            #global Vx = Vx
-            #global Vy = Vy
-            #global dt = dt
-            @timeit "compute beta" beta_vec .= 1.0 ./ P
-            @timeit "compute dt" dt = minimum([dx./maximum(abs.(Vx)), dy./maximum(abs.(Vy)), min(dx, dy) .* sqrt(maximum(rho .* beta_vec)), min(dx, dy).^2.0./mu]).*4.0 # time step size
-            @timeit "compute c_loc" c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1])                                                    # local speed of sound
-            @timeit "compute dtPT" dtPT .= min.(min.(min.(dx ./ abs.(av_x(Vx[:, 2:end-1])), dx ./ abs.(av_y(Vy[2:end-1, :]))), min(dx, dy).^2.0 ./ mu .* ones(nx, ny)), dx ./ c_loc) # time step size for pressure and temperature
-            @timeit "compute dtrho" dtrho .= 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx, dy) ./ c_loc ./ 4.1))                                                         # time step size for density
+            beta_vec .= 1.0 ./ P
+            dt = minimum([dx./maximum(abs.(Vx)), dy./maximum(abs.(Vy)), min(dx, dy) .* sqrt(maximum(rho .* beta_vec)), min(dx, dy).^2.0./mu]).*4.0 # time step size
+            c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1])                                                    # local speed of sound
+            dtPT .= min.(min.(min.(dx ./ abs.(av_x(Vx[:, 2:end-1])), dx ./ abs.(av_y(Vy[2:end-1, :]))), min(dx, dy).^2.0 ./ mu .* ones(nx, ny)), dx ./ c_loc) # time step size for pressure and temperature
+            dtrho .= 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx, dy) ./ c_loc ./ 4.1))                                                         # time step size for density
             
             # Conservation of mass
-            @timeit "compute Frhox" Frhox .= (Vx .> 0.0).*Vx.*rho[1:end-1, :] .+ (Vx .< 0.0).*Vx.*rho[2:end, :] # mass flux in x-direction
-            @timeit "compute Frhoy" Frhoy .= (Vy .> 0.0).*Vy.*rho[:, 1:end-1] .+ (Vy .< 0.0).*Vy.*rho[:, 2:end] # mass flux in y-direction
-            @timeit "compute drhodt" drhodt .= (rho .- rho_old)./dt                                                                           # time derivative of density
-            @timeit "compute rhoRes1" rhoRes .= .-drhodt[2:end-1, 2:end-1] .- diff(Frhox[:, 2:end-1], dims=1)./dx .- diff(Frhoy[2:end-1, :], dims=2)./dy        # updating residual of density
-            @timeit "compute rhoRes2" rhoRes .= rhoRes.*maskrho_solid[2:end-1, 2:end-1]                                                                               # applying mask to residual of density
-            @timeit "compute rho1" rho[2:end-1, 2:end-1] .= rho[2:end-1, 2:end-1] .+ rhoRes.*dtrho.*CFL_P                   # updating density
+            Frhox .= (Vx .> 0.0).*Vx.*rho[1:end-1, :] .+ (Vx .< 0.0).*Vx.*rho[2:end, :] # mass flux in x-direction
+            Frhoy .= (Vy .> 0.0).*Vy.*rho[:, 1:end-1] .+ (Vy .< 0.0).*Vy.*rho[:, 2:end] # mass flux in y-direction
+            drhodt .= (rho .- rho_old)./dt                                                                           # time derivative of density
+            rhoRes .= .-drhodt[2:end-1, 2:end-1] .- diff(Frhox[:, 2:end-1], dims=1)./dx .- diff(Frhoy[2:end-1, :], dims=2)./dy        # updating residual of density
+            rhoRes .= rhoRes.*maskrho_solid[2:end-1, 2:end-1]                                                                               # applying mask to residual of density
+            rho[2:end-1, 2:end-1] .= rho[2:end-1, 2:end-1] .+ rhoRes.*dtrho.*CFL_P                   # updating density
             # Boundary conditions Inflow and outflow densities
             #rho[1, :] .= rho[2, :]
             #rho[end, :] .= rho[end-1, :]
@@ -279,27 +275,27 @@ function conservative2D()
             #rho[:, end] .= rho[:, end-1]
 
             # Strain-rates and stresses
-            @timeit "compute P" P              .= P0 ./ rho0 .* rho                                                  # equation of state for pressure depending on density
-            @timeit "compute divV" divV        .= diff(Vx[:,2:end-1], dims=1)./dx .+ diff(Vy[2:end-1,:],dims=2)./dy                                             # divergence of velocity
-            @timeit "compute Exx" Exx          .= diff(Vx[:,2:end-1],dims=1)./dx .- 1.0./3.0*divV                                                               # strain-rate in x-direction
-            @timeit "compute Eyy" Eyy          .= diff(Vy[2:end-1,:],dims=2)./dx .- 1.0./3.0*divV                                                               # strain-rate in y-direction
-            @timeit "compute Ezz" Ezz          .=                               - 1/3*divV                                                                      # strain-rate in z-direction
-            @timeit "compute Exy" Exy          .= 0.5.*(diff(Vy,dims=1)./dx .+ diff(Vx,dims=2)./dx)                                                             # shear strain-rate in xy-direction
-            @timeit "compute Sxx" Sxx          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Exx                                                                          # total stress (dani class 5 equation)
-            @timeit "compute Syy" Syy          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Eyy                                                                          # total stress
-            @timeit "compute Sxy" Sxy          .=                       2.0.*mu.*Exy                                                                            # total stress
-            @timeit "compute Szz" Szz          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Ezz                                                                           # stress in z-direction
-            @timeit "compute dtV" dtV           = 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx,dy).^2.0 ./ mu ./ 4.0)) .* CFL_V                                           # time step size for velocity
+            P              .= P0 ./ rho0 .* rho                                                  # equation of state for pressure depending on density
+            divV        .= diff(Vx[:,2:end-1], dims=1)./dx .+ diff(Vy[2:end-1,:],dims=2)./dy                                             # divergence of velocity
+            Exx          .= diff(Vx[:,2:end-1],dims=1)./dx .- 1.0./3.0*divV                                                               # strain-rate in x-direction
+            Eyy          .= diff(Vy[2:end-1,:],dims=2)./dx .- 1.0./3.0*divV                                                               # strain-rate in y-direction
+            Ezz          .=                               - 1/3*divV                                                                      # strain-rate in z-direction
+            Exy          .= 0.5.*(diff(Vy,dims=1)./dx .+ diff(Vx,dims=2)./dx)                                                             # shear strain-rate in xy-direction
+            Sxx          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Exx                                                                          # total stress (dani class 5 equation)
+            Syy          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Eyy                                                                          # total stress
+            Sxy          .=                       2.0.*mu.*Exy                                                                            # total stress
+            Szz          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Ezz                                                                           # stress in z-direction
+            dtV           = 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx,dy).^2.0 ./ mu ./ 4.0)) .* CFL_V                                           # time step size for velocity
             
             # Conservation of the x-component of momentum
-            @timeit "compute Mx" Mx             .= av_x(rho).*Vx                                                             # momentum in x-direction
-            @timeit "compute FMxx" FMxx         .= (av_x(Vx[ :     ,2:end-1]).> 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[1:end-1,2:end-1] .+ (av_x(Vx[ :     ,2:end-1]).< 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[2:end  ,2:end-1]  # upwind advective momentum flux
-            @timeit "compute FMxy" FMxy         .= (av_x(Vy[2:end-1, :     ]).> 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,1:end-1] .+ (av_x(Vy[2:end-1, :     ]).< 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,2:end  ]  # upwind advective momentum flux
-            @timeit "compute dMxdt" dMxdt       .= (Mx.-Mx_old)./dt                                                                                             # time derivative of momentum in x-direction
-            @timeit "compute MxRes1" MxRes      .= .-dMxdt[2:end-1,2:end-1] .- diff((FMxx .- Sxx),dims=1)./dx .- diff(FMxy .- Sxy[2:end-1,:],dims=2)./dy       # updating residual of momentum in x-direction
-            @timeit "compute MxRes2" MxRes      .= MxRes.*maskVx_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in x-direction
-            @timeit "compute dMxdtau" dMxdtau   .= MxRes .+ dMxdtau .* ksi                                                                                    # stress derivative of momentum in x-direction
-            @timeit "compute Mx2" Mx[2:end-1,2:end-1]  .= Mx[2:end-1,2:end-1] .+ dMxdtau.*av_x(dtPT).*CFL_V                                                     # updating momentum in x-direction
+            Mx             .= av_x(rho).*Vx                                                             # momentum in x-direction
+            FMxx         .= (av_x(Vx[ :     ,2:end-1]).> 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[1:end-1,2:end-1] .+ (av_x(Vx[ :     ,2:end-1]).< 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[2:end  ,2:end-1]  # upwind advective momentum flux
+            FMxy         .= (av_x(Vy[2:end-1, :     ]).> 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,1:end-1] .+ (av_x(Vy[2:end-1, :     ]).< 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,2:end  ]  # upwind advective momentum flux
+            dMxdt       .= (Mx.-Mx_old)./dt                                                                                             # time derivative of momentum in x-direction
+            MxRes      .= .-dMxdt[2:end-1,2:end-1] .- diff((FMxx .- Sxx),dims=1)./dx .- diff(FMxy .- Sxy[2:end-1,:],dims=2)./dy       # updating residual of momentum in x-direction
+            MxRes      .= MxRes.*maskVx_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in x-direction
+            dMxdtau   .= MxRes .+ dMxdtau .* ksi                                                                                    # stress derivative of momentum in x-direction
+            Mx[2:end-1,2:end-1]  .= Mx[2:end-1,2:end-1] .+ dMxdtau.*av_x(dtPT).*CFL_V                                                     # updating momentum in x-direction
             # BC fixed walls (normal velocity = 0)
             Mx[:,1]      .= Mx[:,2]
             Mx[:,end]    .= Mx[:,end-1]
@@ -307,19 +303,19 @@ function conservative2D()
             Mx[1,:]      .= Mx[2,:]
             Mx[end,:]    .= Mx[end-1,:]
             
-            @timeit "compute Vx" Vx           .= Mx./av_x(rho)                                                              # velocity in x-direction
+            Vx           .= Mx./av_x(rho)                                                              # velocity in x-direction
             Vx[1,:]                           .= Vx0
             Vx[end,:]                         .= Vx0
             
             # Conservation of the y component of momentum
-            @timeit "compute My" My             .= av_y(rho).*Vy                                                              # momentum in y-direction
-            @timeit "compute FMyy" FMyy         .= (av_y(Vy[2:end-1, :     ]).> 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,1:end-1] .+ (av_y(Vy[2:end-1, :     ]).< 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,2:end  ]  # mass flux in y-direction
-            @timeit "compute FMyx" FMyx         .= (av_y(Vx[ :     ,2:end-1]).> 0.0).*av_y(Vx[ :     ,2:end-1]).*My[1:end-1,2:end-1] .+ (av_y(Vx[ :     ,2:end-1]).< 0.0).*av_y(Vx[ :     ,2:end-1]).*My[2:end  ,2:end-1]  # mass flux in x-direction
-            @timeit "compute dMydt" dMydt       .= (My-My_old)./dt                                                                                              # time derivative of momentum in y-direction
-            @timeit "compute MyRes1" MyRes      .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- Syy,dims=2)./dy .- diff(FMyx .- Sxy[:,2:end-1],dims=1)./dx - g .* av_y(rho[2:end-1,2:end-1])  # letzter Term war vorher av_y(rho[2:end-1,2:end-1])
-            @timeit "compute MyRes2" MyRes      .= MyRes.*maskVy_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in y-direction
-            @timeit "compute dMydtau" dMydtau   .= MyRes .+ dMydtau.*ksi                                                                                      # stress derivative of momentum in y-direction
-            @timeit "compute My2" My[2:end-1,2:end-1]  .= My[2:end-1,2:end-1] .+ dMydtau.*av_y(dtPT).*CFL_V                                                     # updating momentum in y-direction
+            My             .= av_y(rho).*Vy                                                              # momentum in y-direction
+            FMyy         .= (av_y(Vy[2:end-1, :     ]).> 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,1:end-1] .+ (av_y(Vy[2:end-1, :     ]).< 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,2:end  ]  # mass flux in y-direction
+            FMyx         .= (av_y(Vx[ :     ,2:end-1]).> 0.0).*av_y(Vx[ :     ,2:end-1]).*My[1:end-1,2:end-1] .+ (av_y(Vx[ :     ,2:end-1]).< 0.0).*av_y(Vx[ :     ,2:end-1]).*My[2:end  ,2:end-1]  # mass flux in x-direction
+            dMydt       .= (My-My_old)./dt                                                                                              # time derivative of momentum in y-direction
+            MyRes      .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- Syy,dims=2)./dy .- diff(FMyx .- Sxy[:,2:end-1],dims=1)./dx - g .* av_y(rho[2:end-1,2:end-1])  # letzter Term war vorher av_y(rho[2:end-1,2:end-1])
+            MyRes      .= MyRes.*maskVy_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in y-direction
+            dMydtau   .= MyRes .+ dMydtau.*ksi                                                                                      # stress derivative of momentum in y-direction
+            My[2:end-1,2:end-1]  .= My[2:end-1,2:end-1] .+ dMydtau.*av_y(dtPT).*CFL_V                                                     # updating momentum in y-direction
             # BC fixed walls (normal velocity = 0)
             My[1,:]      .= -My[2,:]
             My[end,:]    .= -My[end-1,:]
@@ -327,12 +323,12 @@ function conservative2D()
             My[:,1]      .= My[:,2]
             My[:,end]    .= My[:,end-1]
 
-            @timeit "compute Vy" Vy             .= My./av_y(rho)                                                                # updating velocity in y-direction
+            Vy             .= My./av_y(rho)                                                                # updating velocity in y-direction
 
             if mod(iter, 25) == 0
                 it_counter += 1
                 print("err = $err\n")
-                @timeit "compute err" err = maximum(abs.([rhoRes[:]; MxRes[:]; MyRes[:]]))                                                                      # error for time integration concerning density and momentum
+                err = maximum(abs.([rhoRes[:]; MxRes[:]; MyRes[:]]))                                                                      # error for time integration concerning density and momentum
                 if isnan(err) == 1 
                     break
                 end
@@ -342,8 +338,7 @@ function conservative2D()
                 @show it_counter
             end
         end
-        global time = time
-        @timeit "compute time" time = time + dt
+        time = time + dt
 
         # Updating plot
         if mod(it-1, 1) == 0
