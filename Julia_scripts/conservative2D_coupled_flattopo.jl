@@ -1,7 +1,4 @@
-using Pkg
-Pkg.activate(".")
 using CairoMakie
-using TimerOutputs
 using Infiltrator
 using GeoParams
 
@@ -95,16 +92,19 @@ function conservative2D_ve()
     Vx0     = 0.0                               # starting velocity in x-direction
     P0      = 1.0e5                               # pressure at rest
     beta    = 1.0/141.0e3                       # compressibility
-    beta_air      = 1.0e-6                         # compressibility
-    beta_solid    = 1.0e-12                      # compressibility
-    eta      = 1.81e-5                          # dynamic viscosity
-    eta_air      = 1.0e19                          # dynamic viscosity for air
-    eta_solid    = 1.0e40                         # dynamic viscosity for solid
-    #mu      = 1.81e-5                          # shear modulus
+    beta_air    = 1.0e-6                         # compressibility
+    eta         = 1.81e-5                          # dynamic viscosity
+    eta_air     = 1.0e19                          # dynamic viscosity for air
+    eta_solid   = 1.0e40                         # dynamic viscosity for solid
+    #mu         = 1.81e-5                          # shear modulus
     mu_air      = 1.0e13                           # shear modulus for air
     mu_solid    = 1.0e11                           # shear modulus for solid
-    g_y       = 9.81                             # gravitational acceleration
-    a       = 40.0                             # wavelength content of excitation
+    g_y         = 9.81                             # gravitational acceleration
+    a           = 40.0                             # wavelength content of excitation
+    ν           = 0.4                            # Poisson's ratio
+    K_s         = (2.0 * mu_solid * (1.0 + ν)) / (3.0 * (1.0 - 2.0 * ν))                # model poisson ratio of the solid
+    beta_solid  = 1.0 / K_s                        # compressibility
+
 
     ν_solid = 0.4
     K_solid = (2.0 * mu_solid*(1.0+ν_solid)) / (3.0*(1.0 - 2.0 * ν_solid))                # model poisson ratio of the solid
@@ -113,8 +113,8 @@ function conservative2D_ve()
 
 
     # Numerics
-    nx      = 21                               # number of nodes in x-direction
-    ny      = 21                               # number of nodes in y-direction
+    nx      = 101                               # number of nodes in x-direction
+    ny      = 101                               # number of nodes in y-direction
     dx      = Lx/(nx)                           # grid spacing in x-direction
     dy      = Ly/(ny)                           # grid spacing in y-direction
     dt      = 1.0                               # time step size
@@ -180,11 +180,11 @@ function conservative2D_ve()
     P_non  = nondimensionalize(P_geo, CharDim)
 
     # Reduce allocations
-    β       = ones(Float64, nx + 2, ny + 2) .* βs_non
-    μ       = ones(Float64, nx, ny) .* μs_non
-    μ_c     = ones(Float64, nx + 1, ny + 1) .* μs_non
-    η       = ones(Float64, nx, ny) .* ηs_non
-    η_c     = ones(Float64, nx + 1, ny + 1) .* ηs_non
+    β       = ones(Float64, nx + 2, ny + 2) #.* βs_non
+    μ       = ones(Float64, nx, ny) #.* μs_non
+    μ_c     = ones(Float64, nx + 1, ny + 1) #.* μs_non
+    η       = ones(Float64, nx, ny) #.* ηs_non
+    η_c     = ones(Float64, nx + 1, ny + 1) #.* ηs_non
     rho_old = zeros(Float64, nx, ny)
     Mx_old  = zeros(Float64, nx + 1, ny + 2)
     My_old  = zeros(Float64, nx + 2, ny + 1)
@@ -195,7 +195,7 @@ function conservative2D_ve()
     Frhoy   = zeros(Float64, nx + 2, ny + 1)
     drhodt  = zeros(Float64, nx + 2, ny + 2)
     rhoRes  = zeros(Float64, nx, ny)
-    rho     = ones(Float64, nx + 2, ny + 2) .* ρs_non
+    rho     = ones(Float64, nx + 2, ny + 2) #.* ρs_non
     P       = zeros(Float64, nx + 2, ny + 2)
     P_dim   = zeros(Float64, nx + 2, ny + 2)
     P_old   = zeros(Float64, nx + 2, ny + 2)
@@ -365,20 +365,19 @@ function conservative2D_ve()
 
     # Initial conditions
     #@. β      += beta_air * (maskrho_air == 1.0) + beta_solid * (maskrho_solid == 1.0)                  # initial viscosity distribution  
-    #@. β      = βa_non * (maskrho_closedchamber_air == 1.0) + βs_non * (maskrho_closedchamber_solid == 1.0)                  # initial viscosity distribution  
+    @. β      = βa_non * (maskrho_closedchamber_air == 1.0) + βs_non * (maskrho_closedchamber_solid == 1.0)                  # initial viscosity distribution  
 
     #P         .= (P_non.*exp.(-g_non.*(y2dc_non[1:end-1, 1:end-1].+1.0./5.0.*L_non).*M_non./T_non./R_non)) .* maskrho_closedchamber_air .+ reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2)*dy_non,dims=2), dims=2)                                # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
 
     #rho       .= (rho0 .* P) ./ P0 .* maskrho_air .+ rho_solid .* maskrho_solid                         # equation of state for density depending on pressure
-    #rho       .= (rho0 .* P) ./ P0 .* maskrho_closedchamber_air .+ rho_solid .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
-    #rho       .= ρa_non .* maskrho_closedchamber_air .+ ρs_non .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
+    rho       .= (rho0 .* P) ./ P0 .* maskrho_closedchamber_air .+ rho_solid .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
+    rho       .= ρa_non .* maskrho_closedchamber_air .+ ρs_non .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
     
     #rho[radrho .< diam ./ 2.0] .= rho0 .+ drho                                                          # initial density in the circle
 
     #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= rho0#.+drho          # initial density of the conduit overlapping with the circular chamber (so in the chamber)
     #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.15.*Ly).*drho./(-0.15.-(locY.+diam./2.0)).+rho0    # initial density in the conduit
 
-                                                                 # equation of state for pressure depending on density
 
     # Setting up lithostatic pressure
     #maskrho_solid_and_chamber  = zeros(Float64, nx + 2, ny + 2)
@@ -390,7 +389,7 @@ function conservative2D_ve()
 
     #P .+= reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2)*dx_non,dims=2), dims=2)
 
-    #P .= P_non .+ exp.((.-50.0 .* Xc_non[1:end-1].^2.0) .+ (.-50.0 .* Yc_non[1:end-1]'.^2.0))          # initial pressure distribution
+    P .= P_non .+ exp.((.-50.0 .* Xc_non[1:end-1].^2.0) .+ (.-50.0 .* Yc_non[1:end-1]'.^2.0))          # initial pressure distribution
 
     # y2dc_solid = coordinates for solid part
     #y2dc_solid = abs.(y2dc) .* maskrho_solid_and_chamber
@@ -415,16 +414,16 @@ function conservative2D_ve()
     #@. η += eta_air * (maskrho_air[2:end-1, 2:end-1] == 1.0) + eta_solid * (maskrho_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
     #@. μ += mu_air * (maskrho_air[2:end-1, 2:end-1] == 1.0) + mu_solid * (maskrho_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
     
-    ##@. η += ηa_non * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
-    ##@. μ += μa_non * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
+    @. η += ηa_non * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
+    @. μ += μa_non * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
 
     #@. η_c += eta_air * (maskμc_air == 1.0) + eta_solid * (maskμc_solid == 1.0)   # initial viscosity distribution for corner nodes
-    ##@. η_c += ηa_non * (maskμc_closedchamber_air == 1.0) + ηs_non * (maskμc_closedchamber_solid == 1.0)   # initial viscosity distribution for corner nodes
+    @. η_c += ηa_non * (maskμc_closedchamber_air == 1.0) + ηs_non * (maskμc_closedchamber_solid == 1.0)   # initial viscosity distribution for corner nodes
     #@. μ_c += mu_air * (maskμc_air == 1.0) + mu_solid * (maskμc_solid == 1.0)     # initial viscosity distribution for corner nodes
-    ##@. μ_c += μa_non * (maskμc_closedchamber_air == 1.0) + μs_non * (maskμc_closedchamber_solid == 1.0)     # initial viscosity distribution for corner nodes
+    @. μ_c += μa_non * (maskμc_closedchamber_air == 1.0) + μs_non * (maskμc_closedchamber_solid == 1.0)     # initial viscosity distribution for corner nodes
 
     # Inital plot 
-    P_dim = dimensionalize(P, CharDim)
+    P_dim = ustrip(dimensionalize(P, Pa, CharDim))
     
     fig = Figure()
     ax = Axis(fig[1, 1], xticks=([-500, 0, 500], ["-500", "0", "500"]), yticks=([-500, 0, 500], ["-500", "0", "500"]),
@@ -615,11 +614,9 @@ function conservative2D_ve()
             ax2 = Axis(fig1[2,1], xticks=([-500, 0, 500], ["-500", "0", "500"]), yticks=([-500, 0, 500], ["-500", "0", "500"]),
                     yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t")
 
-            
-            
-            Vx_dim .= dimensionalize(Vx, m/s, CharDim)
-            Vy_dim .= dimensionalize(Vy, m/s, CharDim)
-            P_dim  .= dimensionalize(P, Pa, CharDim)
+            Vx_dim .= ustrip(dimensionalize(Vx, m/s, CharDim))
+            Vy_dim .= ustrip(dimensionalize(Vy, m/s, CharDim))
+            P_dim  .= ustrip(dimensionalize(P, Pa, CharDim))
             X = av_xy(x2dc)
             Y = av_xy(y2dc)
             U = av_y(Vx_dim)
@@ -627,7 +624,7 @@ function conservative2D_ve()
 
             data_plt = sqrt.(U.^2.0 .+ V.^2.0)
 
-            hm = heatmap!(ax1, x2dc, y2dc, ustript(P_dim), shading=false,)# colorrange=(P0, P0*2))
+            hm = heatmap!(ax1, x2dc, y2dc, P_dim, shading=false,)# colorrange=(P0, P0*2))
             #hm = heatmap!(ax1, X[2:end-1, 2:end-1], Y[2:end-1, 2:end-1], data_plt[2:end-1, 2:end-1], shading=false, colormap=Reverse(:roma))#, colorrange=(0.0, 0.1),)
             hm2 = heatmap!(ax2, X[2:end-1, 2:end-1], Y[2:end-1, 2:end-1], data_plt[2:end-1, 2:end-1], shading=false, colormap=Reverse(:roma))#, colorrange=(0.0, 0.01),)
             Colorbar(fig1[1,2],  hm, label="Pressure", labelsize=25, ticklabelsize=25)
