@@ -290,7 +290,7 @@ end
     #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
     #sur2 = surface!(ax3, xc_vec, yc_vec, P)
     display(fig)
-    save("../Plots/visco_elastic_shockwave_test/$0.png", fig)
+    save("../Plots/visco_elastic_shockwave_test/0.png", fig)
     for i = 1:nt
         divV .= diff(Vx, dims=1) ./ dx_non .+ diff(Vy, dims=2) ./ dy_non
         dPdt .= .-(1.0 ./ βs_non) .* divV
