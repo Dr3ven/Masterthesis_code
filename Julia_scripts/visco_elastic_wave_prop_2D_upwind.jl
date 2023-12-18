@@ -1,4 +1,5 @@
 using CairoMakie
+using Infiltrator
 using GeoParams
 
 @views function av_x(B)
@@ -27,10 +28,12 @@ end
     λ  = (2.0 * μ * ν) / (1.0 - 2.0 * ν)     # Lamé parameter 2
     K_s = (2.0 * μ * (1.0 + ν)) / (3.0 * (1.0 - 2.0 * ν))                # model poisson ratio of the solid
     β  = 1.0 / K_s                         # compressibility
+    E_s = 2.0 * μ * (1.0 + ν)                # Young's modulus
+    V_p = sqrt(E_s / (ρ_s * ((1.0 + η) / E_s))) # P-wave velocity in Voigt model
 
     # Numerics
-    nx = 21                            # number of nodes in x
-    ny = 21                            # number of nodes in y
+    nx = 101                            # number of nodes in x
+    ny = 101                            # number of nodes in y
     dx = Lx / nx                        # step size in x
     dy = Ly / ny                        # step size in y
     nt = 5000                           # number of time steps
@@ -64,6 +67,7 @@ end
     λs_geo = λ*Pa
     g_geo  = g_y*m/s^2
     P_geo  = P0*Pa
+    E_geo  = E_s*Pa
 
     xc_non = nondimensionalize(xc_geo, CharDim)
     yc_non = nondimensionalize(yc_geo, CharDim)
@@ -80,6 +84,11 @@ end
     λs_non = nondimensionalize(λs_geo, CharDim)
     g_non  = nondimensionalize(g_geo, CharDim)
     P_non  = nondimensionalize(P_geo, CharDim)
+    E_non  = nondimensionalize(E_geo, CharDim)
+
+    Vp_non = sqrt(E_non / (ρs_non * ((1.0 + ηs_non) / E_non)))
+    Vs_non = sqrt(μs_non / (ρs_non * ((1.0 + ηs_non) / μs_non)))
+
 
     # Allocations
     P = zeros(Float64, nx, ny)
@@ -115,10 +124,10 @@ end
     εII_vec = []
 
     # Initial conditions
-    c  = sqrt(1.0/βs_non/ρs_non)                  # speed of sound / p-wave velocity
+    c  = sqrt((1.0/βs_non)/ρs_non)                  # speed of sound / p-wave velocity
     dt = min(min(dx_non, dy_non) / c / 4.5, min(dx_non^2.0, dy_non^2.0) / ((4.0 / 3.0) * ηs_non / ρs_non) / 4.5)        # time step size                       
 
-    P .= P_non .+ exp.((.-0.00005 .* (xc_non/ 0.01).^2.0) .+ (.-0.00005 .* ((yc_non .- 1000.0) / 0.01)'.^2.0))          # initial pressure distribution
+    P .= P_non .+ exp.((.-0.0000005 .* (xc_non/ 0.01).^2.0) .+ (.-0.0000005 .* ((yc_non .- 1000.0) / 0.01)'.^2.0))          # initial pressure distribution
     # initial equilibirum 
     for i in 1:ny
         τyy[:, (ny+1)-i] .= ρs_non .* g_non .* yc_non[i]
@@ -199,7 +208,7 @@ end
             hm2 = heatmap!(ax2, xc_dim, yc_dim, data_plt, colormap=Reverse(:roma))#, colorrange=(0, 8.0e-7))#, colorrange=(0.0, 1.0))
             #scatter!(ax2, x_circ, y_circ, color=:white, markersize=4.0)
             Colorbar(fig[1,2], hm1, label="Pressure [Pa]", labelsize=25, ticklabelsize=25)#, vertical=false)
-            Colorbar(fig[2,2], hm2, label="Velocity [m/timestep]", labelsize=25, ticklabelsize=25)#, vertical=false)
+            Colorbar(fig[2,2], hm2, label="Velocity [m/s]", labelsize=25, ticklabelsize=25)#, vertical=false)
             #ax3 = Axis3(fig2[1,2][1,1], title="time = $t")
             #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
             #sur2 = surface!(ax3, xc_vec, yc_vec, P)
