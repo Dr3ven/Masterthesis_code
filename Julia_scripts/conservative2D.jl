@@ -105,6 +105,7 @@ function conservative2D()
     st      = ceil(Int, nx / 30)
 
     # Reduce allocations
+    beta_vec= zeros(Float64, nx, ny)
     c_loc   = zeros(Float64, nx, ny)
     dtPT    = zeros(Float64, nx, ny)
     dtrho   = zeros(Float64, nx, ny)
@@ -189,30 +190,23 @@ function conservative2D()
     rho[radrho .< diam ./ 2.0] .= rho0 .+ drho        # initial density in the circle
 
     rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= rho0.+drho        # initial density below the circle
-    rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= -0.0 .* (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.1.*Ly).*drho./(-0.1.-(locY.+diam./2.0)).+rho0                       # initial density above the circle
+    #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= .-(y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.1.*Ly).*drho./(-0.1.-(locY.+diam./2.0)).+rho0                       # initial density above the circle
     P         .= 1.0./beta.*log.(rho./rho0).+P0                         # equation of state for pressure depending on density
 
-    #=global=# time = 0.0
+    time = 0.0
 
     # Inital plot
-    fig = Figure()
-    ax  =   (ax_P   = Axis(fig[1, 1][1 ,1]; aspect = DataAspect(), title="P"),
-            ax_V    = Axis(fig[1, 2][1 ,1]; aspect = DataAspect(), title="V"),
-            ax_open = Axis(fig[2, 1][1 ,1]; aspect = DataAspect(), title="time=$time"),
-            ax_err  = Axis(fig[2, 2]; yscale=log10, title="Convergence", xlabel="# iter/nx", ylabel="error"),)
+    X = av_xy(x2dc)
+    Y = av_xy(y2dc)
+    U = av_y(Vx)
+    V = av_x(Vy)
+    V_plt = sqrt.(U.^2.0 .+ V.^2.0)
 
-    plt =   (fld = (P = heatmap!(ax.ax_P, x2dc, y2dc, P; shading=false, colorrange=(P0, P0*2)),
-                        #lines!(ax.ax_P, Xp, Yp; color = :white),
-                        #arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white),
-                    V = heatmap!(ax.ax_V, x2dVy, y2dVy, Vy; shading=false, colorrange=(0.0, 350), colormap=Reverse(:roma)),
-                        #lines!(ax.ax_V, Xp, Yp; color = :white),
-                        #arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white),
-                    open = heatmap!(ax.ax_open, x2dc, y2dc, P; shading=false, colormap=:turbo, colorrange=(P0, P0*2)),
-                        #lines!(ax.ax_open, Xp, Yp; color = :white),
-                    err = lines!(ax.ax_err, Point2.(iters_evo, errs_evo), linewidth=4)),)
-    Colorbar(fig[1 ,1][1,2], plt.fld.P, label="Pressure [Pa]")
-    Colorbar(fig[1 ,2][1,2], plt.fld.V, label="Velocity [m/s]")
-    Colorbar(fig[2 ,1][1,2], plt.fld.open, label="open")
+    fig = Figure()
+    ax_P    = Axis(fig[1, 1], title="P")
+
+    P_plt = heatmap!(ax_P, x2dc, y2dc, P; shading=false, colorrange=(P0, P0*2))
+    Colorbar(fig[1 ,2], P_plt, label="Pressure [Pa]")
     points_XpYp = Point2f[]
     for i in eachindex(Xp)
         x = Xp[i]
@@ -220,18 +214,10 @@ function conservative2D()
         point = (x,y)
         push!(points_XpYp, point)
     end
-    #poly!(ax,points_XpYp)
-    lines!(ax.ax_P, Xp, Yp, color = :white)
-    lines!(ax.ax_V, Xp, Yp, color = :white)
-    lines!(ax.ax_open, Xp, Yp, color = :white)
+    lines!(ax_P, Xp, Yp, color = :white)
     display(fig)
     
     # Sovler
-    #Vy        .= 0.0 * Vx0 ./ 1.0 .* exp.(-1.0e3 * ((x2dVy .- (locX .+ 1.5 .* diam)).^2.0 .+ y2dVy.^2.0)) # initial velocity in y-direction
-    #Mx        .= av_x(rho).*Vx  # initial momentum in x-direction
-    #My        .= av_y(rho).*Vy  # initial momentum in y-direction
-    #rhoRes    .= zero.(rho[2:end-1,2:end-1])      # residual of density
-
     @inbounds for it = 1:300
         @show it
         rho_old .= rho                                               # save old density values for time integration
@@ -244,7 +230,7 @@ function conservative2D()
         dMydtau .= 0.0                                              # stress derivative of momentum in y-direction        
         while err > 1.0e-3
             iter += 1
-            
+            beta_vec = 1.0 ./ P
             dt = minimum([dx/maximum(abs.(Vx)), dy/maximum(abs.(Vy)), min(dx, dy) .* sqrt(maximum(rho).*beta), min(dx, dy).^2.0./mu]).*8.0 # time step size
             c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].*beta)                                                    # local speed of sound
             dtPT .= min.(min.(min.(dx ./ abs.(av_x(Vx[:, 2:end-1])), dx ./ abs.(av_y(Vy[2:end-1, :]))), min(dx, dy).^2.0 ./ mu .* ones(Float64, nx, ny)), dx ./ c_loc) # time step size for pressure and temperature
@@ -338,33 +324,24 @@ function conservative2D()
             Y = av_xy(y2dc)
             U = av_y(Vx)
             V = av_x(Vy)
+            V_plt = sqrt.(U.^2.0 .+ V.^2.0)
             stepsize = 5
             
-            plt.fld.P[3] = P
-            plt.fld.V[3] = Vy
-            plt.fld.open[3] = P
-            plt.fld.err[1] = Point2.(iters_evo, errs_evo)
+            fig = Figure(resolution=(2000, 2000))
+            ax_P = Axis(fig[1, 1]; title="P, time = $time", yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)
+            ax_V = Axis(fig[2, 1]; title="V, time = $time", yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)
+                  
 
-            #=
-            fig = Figure()
-            ax = (ax_P = Axis(fig[1, 1][1 ,1]; aspect = DataAspect(), title="P"),
-                  ax_V = Axis(fig[1, 2][1 ,1]; aspect = DataAspect(), title="V"),
-                  ax_open = Axis(fig[2, 1][1 ,1]; aspect = DataAspect(), title="time=$time")
-                  ax_err = Axis(fig[2, 2]; aspect = DataAspect(), title="err", xlabel="# iter/nx", ylabel="error"),)
-
-            plt = (hm_P = heatmap!(ax.ax_P, x2dc, y2dc, P, shading=false, colorrange=(P0, P0*2)),
-                          lines!(ax.ax_P, Xp, Yp, color = :white),
-                          arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white),
-                   hm_V = heatmap!(ax.ax_V, x2dVy, y2dVy, Vy, shading=false, colorrange=(0.0, 350), colormap=:viridis),
-                          lines!(ax.ax_V, Xp, Yp, color = :white),
-                          arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white),
-                   hm_open = heatmap!(ax.ax_open, x2dc, y2dc, P, shading=false, colormap=:turbo),
-                             lines!(ax.ax_open, Xp, Yp, color = :white),
-                   err = scatterlines!(ax.ax_err, Point2.(iters_evo, errs_evo), linewidth=4))
-            Colorbar(fig[1 ,1][1,2], plt.hm_P, label="Pressure [Pa]")
-            Colorbar(fig[1 ,2][1,2], plt.hm_V, label="Velocity [m/s]")
-            Colorbar(fig[2 ,1][1,2], plt.hm_P, label="open")
-            #poly!(ax,points_XpYp)=#
+            hm_P = heatmap!(ax_P, x2dc, y2dc, P, shading=false, colormap=Reverse(:roma), colorrange=(P0, P0*2))
+                    lines!(ax_P, Xp, Yp, color = :white)
+                    #arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white)
+            hm_V = heatmap!(ax_V, X, Y, V_plt, shading=false, colorrange=(0.0, 350), colormap=Reverse(:roma))
+                    lines!(ax_V, Xp, Yp, color = :white)
+                    #arrows!(ax, X[1:stepsize:end, 1], Y[1, 1:stepsize:end], U[1:stepsize:end, 1:stepsize:end], V[1:stepsize:end, 1:stepsize:end], arrowsize=7, color = :white)
+            #err = scatterlines!(ax.ax_err, Point2.(iters_evo, errs_evo), linewidth=4)
+            Colorbar(fig[1 ,2], hm_P, label="Pressure [Pa]")
+            Colorbar(fig[2 ,2], hm_V, label="Velocity [m/s]")
+            #poly!(ax,points_XpYp)
 
             display(fig)
 
