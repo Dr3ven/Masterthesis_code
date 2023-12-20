@@ -313,7 +313,7 @@ function conservative2D()
             dMydt       .= (My-My_old)./dt                                                                                              # time derivative of momentum in y-direction
             MyRes      .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- Syy,dims=2)./dy .- diff(FMyx .- Sxy[:,2:end-1],dims=1)./dx - g .* av_y(rho[2:end-1,2:end-1])  # letzter Term war vorher av_y(rho[2:end-1,2:end-1])
             MyRes      .= MyRes.*maskVy_solid[2:end-1,2:end-1]                                                                              # applying mask to residual of momentum in y-direction
-            dMydtau   .= MyRes .+ dMydtau.*ksi                                                                                      # stress derivative of momentum in y-direction
+            dMydtau   .= MyRes .+ dMydtau.* ksi                                                                                      # stress derivative of momentum in y-direction
             My[2:end-1,2:end-1]  .= My[2:end-1,2:end-1] .+ dMydtau.*av_y(dtPT).*CFL_V                                                     # updating momentum in y-direction
             Vy             .= My./av_y(rho)                                                                # updating velocity in y-direction
             
