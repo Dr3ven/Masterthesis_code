@@ -14,7 +14,7 @@ end
     B = 0.25 .* (B[2:end,2:end] .+ B[1:end-1,2:end] .+ B[2:end,1:end-1] .+ B[1:end-1,1:end-1])
 end
 
-@views function visco_elastic_wave_2D()
+@views function visco_elastic_wave_2D_upwind()
     # Physics
     Lx = 1000.0                          # domain in x
     Ly = Lx                             # domain in y
@@ -36,7 +36,7 @@ end
     ny = 101                            # number of nodes in y
     dx = Lx / nx                        # step size in x
     dy = Ly / ny                        # step size in y
-    nt = 5000                           # number of time steps
+    nt = 50000                           # number of time steps
     t0 = 0.01                               # time of excitation      
     t = 0.0                             # initial time
     a = 40.0                              # duration of excitation
@@ -125,7 +125,7 @@ end
 
     # Initial conditions
     c  = sqrt((1.0/βs_non)/ρs_non)                  # speed of sound / p-wave velocity
-    dt = min(min(dx_non, dy_non) / c / 4.5, min(dx_non^2.0, dy_non^2.0) / ((4.0 / 3.0) * ηs_non / ρs_non) / 4.5)        # time step size                       
+    dt = 1.0e-16 #min(min(dx_non, dy_non) / c / 4.5, min(dx_non^2.0, dy_non^2.0) / ((4.0 / 3.0) * ηs_non / ρs_non) / 4.5)        # time step size                       
 
     P .= P_non .+ exp.((.-0.0000005 .* (xc_non/ 0.01).^2.0) .+ (.-0.0000005 .* ((yc_non .- 1000.0) / 0.01)'.^2.0))          # initial pressure distribution
     # initial equilibirum 
@@ -146,7 +146,7 @@ end
     xc_dim = ustrip(dimensionalize(xc_non, m, CharDim))
     yc_dim = ustrip(dimensionalize(yc_non, m, CharDim))
 
-    fig = Figure(resolution=(2000,2000))
+    fig = Figure(resolution=(1000,1000))
     ax = Axis(fig[1,1], title="t = $t")#, limits=(nothing, nothing, nothing, 1.1))
     #ax3 = Axis3(fig[1,1], title="time = $t")
     #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
@@ -214,7 +214,6 @@ end
             #sur2 = surface!(ax3, xc_vec, yc_vec, P)
             display(fig)
             #save(".\\Plots\\Earthquake_2\\$(i).png", fig2)
-            @infiltrate
         end
     end
 end

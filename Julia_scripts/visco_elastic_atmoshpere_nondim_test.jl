@@ -98,19 +98,23 @@ end
     ny = 301                            # number of nodes in y
     dx = Lx / nx                        # step size in x
     dy = Ly / ny                        # step size in y
-    nt = 10000                           # number of time steps
-    t = 0.0                                                      # initial time
+    nt = 10000                          # number of time steps
+    t = 0.0                             # initial time
+
     # Grid definition
     xc = -(Lx - dx) / 2.0:dx:(Lx - dx) / 2.0        # grid nodes in x-direction
     yc = -(Ly - dy) / 2.0:dy:(Ly - dy) / 2.0        # grid nodes in x-direction
     xv =  -Lx       / 2.0:dx: Lx       / 2.0        # grid vertices in x-direction 
     yv =  -Ly       / 2.0:dy: Ly       / 2.0        # grid vertices in x-direction
+
     # Nondimensionalization
     CharDim = GEO_units(length=1km, viscosity=1.0e19Pas, stress=100MPa)
     L       = 500.0                             # length of half the domain
     R       = 8.314                             # gas constant
     T       = 288.0                             # temperature
     M       = 0.028                             # molar mass of air
+
+    # Making values GeoUnits for nondimensionalization
     xc_geo = xc*m
     yc_geo = yc*m
     t_geo = t*s
@@ -131,6 +135,8 @@ end
     λs_geo = λ*Pa
     g_geo  = g_y*m/s^2
     P_geo  = P0*Pa
+
+    # Nondimensionalization
     xc_non = nondimensionalize(xc_geo, CharDim)
     yc_non = nondimensionalize(yc_geo, CharDim)
     t_non  = nondimensionalize(t_geo, CharDim)
@@ -189,6 +195,7 @@ end
     radVx = zeros(Float64, nx + 1, ny)
     radVy = zeros(Float64, nx, ny + 1)
     radμc = zeros(Float64, nx + 1, ny + 1)
+
     ### Geometrie part ---------------------------
     x2dc, y2dc = meshgrid(xc,yc)                                        # 2d mesh of x- and y-coordinates of density nodes
     x2dVx, y2dVx = meshgrid(xv,yc)                                      # 2d mesh of x- and y-coordinates of velocity nodes in x-direction
@@ -248,13 +255,16 @@ end
     ### End of geometrie part --------------------
 
     # Initial conditions
-    cs_non  = sqrt(1.0/βs_non/ρs_non)                                                              # speed of sound / p-wave velocity
-    ca_non  = sqrt(1.0/βa_non/ρa_non)                                                              # speed of sound / p-wave velocity
+    cs_non  = sqrt(1.0/βs_non/ρs_non)                                                              # speed of sound / p-wave velocity in solid
+    ca_non  = sqrt(1.0/βa_non/ρa_non)                                                              # speed of sound / p-wave velocity in air
     dt = 1.0e-23 #min(min(dx, dy) / c / 4.5, min(dx^2.0, dy^2.0) / ((4.0 / 3.0) * η / ρ) / 4.5)        # time step size                       
 
+    # Equilibrium pressure distribution in the air
     P .= P_non .* exp.(-g_non .* (y2dc_non .+ 1.0 ./ 5.0 .* L_non) .* M_non ./ T_non ./ R_non)
+    # Pressure pertubation for the shockwave
     P .+= P_non .+ exp.((.-0.5 .* ((xc_non .+ 0.1)/ 0.01).^2.0) .+ (.-0.5 .* ((yc_non .+ 0.451) / 0.01)'.^2.0))          # initial pressure distribution
 
+    # Setting up matrices for density, compressibility, viscosity and shear modulus
     @. ρ    += ρa_non * (maskrho_air == 1.0) + (maskrho_solid  == 1.0) * ρs_non                 # density
     @. ρ_vx += ρa_non * (maskVx_air  == 1.0) + (maskVx_solid   == 1.0) * ρs_non                 # density
     @. ρ_vy += ρa_non * (maskVy_air  == 1.0) + (maskVy_solid   == 1.0) * ρs_non                 # density
@@ -269,28 +279,33 @@ end
     #yc_vec = Vector(yc)
 
     # Initial plotting
+    # Points for the scatter plot showing the boundary between air and solid
     x_circ = zeros(length(x_circ_ind))
     y_circ = zeros(length(y_circ_ind))
     x_circ = xc[x_circ_ind]
     y_circ = yc[y_circ_ind]
+
+    # Dimensionalization for plotting
     P_dim  = ustrip(dimensionalize(P, Pa, CharDim))
     τyy_dim = ustrip(dimensionalize(τyy, Pa, CharDim))
     xc_dim = ustrip(dimensionalize(xc_non, m, CharDim))
     yc_dim = ustrip(dimensionalize(yc_non, m, CharDim))
+
+    # Ticks for the Axes
     xyticks = ["-400", "-200", "0", "200", "400"]
     xytick_positions = range(start=-400, stop=400, step=200)
+    
+    # Initial plotting
     fig = Figure()
     ax = Axis(fig[1,1][1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
                 yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)#, title="t = $t")#, aspect = DataAspect())#, limits=(nothing, nothing, nothing, 1.1))
     hm = heatmap!(ax, xc_dim, yc_dim, P_dim, colormap=Reverse(:roma))
     #lines!(ax, Xp, Yp, color=:white)
-    #scatter!(ax, x_circ, y_circ, color=:white, markersize=4.0)
     Colorbar(fig[1,2][1,1], hm, label="Pressure", labelsize=25, ticklabelsize=25)#, vertical=false)
-    #ax3 = Axis3(fig[1,2][1,1], title="time = $t")
-    #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
-    #sur2 = surface!(ax3, xc_vec, yc_vec, P)
     display(fig)
-    save("../Plots/visco_elastic_shockwave_test/0.png", fig)
+    #save("../Plots/visco_elastic_shockwave_test/0.png", fig)
+
+    # Time loop
     for i = 1:nt
         divV .= diff(Vx, dims=1) ./ dx_non .+ diff(Vy, dims=2) ./ dy_non
         dPdt .= .-(1.0 ./ βs_non) .* divV
@@ -308,9 +323,7 @@ end
         dVydt[:, 2:end-1] .= (1.0 ./ ρ_vy[:, 2:end-1]) .* (.-diff(P, dims=2) ./ dy_non .+ diff(τyy, dims=2) ./ dy_non .+ diff(τxy[:, 2:end-1], dims=1) ./ dx_non .+ g_non .* ρ_vy[:, 2:end-1]) .- Vy[:, 2:end-1] .* diff(av_y(Vy), dims=2) ./ dy_non .+ av_y(av_x(Vx)) .* diff(av_y(Vy), dims=2) ./ dx_non
         Vx[2:end-1, :] .= Vx[2:end-1, :] .+ dVxdt[2:end-1, :] .* dt .* maskVx_air[2:end-1, :]
         Vy[:, 2:end-1] .= Vy[:, 2:end-1] .+ dVydt[: ,2:end-1] .* dt .* maskVy_air[:, 2:end-1]
- 
-        # Absorbing boundary conditions (Boris said: Just use increasing dampening factor for multiple grid point layers)
-        
+         
         Vx[1, :]   .= 0.0 #Vx[:, 2]
         Vx[end, :] .= 0.0 #Vx[:, end-1]
         Vy[1, :]   .= 0.0
@@ -318,7 +331,9 @@ end
 
         t += dt
         
+        # Plotting for the time steps
         if i % 10 == 0
+            # Dimensionalization for plotting
             Vy_dim = dimensionalize(Vy, m/s, CharDim)
             Vx_dim = dimensionalize(Vx, m/s, CharDim)
             Vx_av = av_x(ustrip(Vx_dim))
@@ -327,6 +342,7 @@ end
             P_plt = ustrip(dimensionalize(P, Pa, CharDim))
             t_dim = dimensionalize(t, s, CharDim)
 
+            # Plotting
             fig1 = Figure(resolution=(2000,2000))
             ax1 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
                     yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
@@ -340,11 +356,8 @@ end
             scatter!(ax2, x_circ, y_circ, color=:white, markersize=4.0)
             Colorbar(fig1[1,2], hm1, label="Pressure [Pa]", labelsize=25, ticklabelsize=25)#, vertical=false)
             Colorbar(fig1[2,2], hm2, label="Velocity [m/s]", labelsize=25, ticklabelsize=25)#, vertical=false)
-            #ax3 = Axis3(fig2[1,2][1,1], title="time = $t")
-            #limits!(ax3, -Lx / 2.0, Lx / 2.0, -Ly / 2.0, Ly / 2.0, -0.1, 1.0)
-            #sur2 = surface!(ax3, xc_vec, yc_vec, P)
             display(fig1)
-            save("../Plots/visco_elastic_shockwave_test/$i.png", fig1)
+            #save("../Plots/visco_elastic_shockwave_test/$i.png", fig1)
 
         end
     end
