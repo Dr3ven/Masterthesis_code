@@ -53,15 +53,47 @@ function sod_shock_tube_maccormack!(ρ, u, p, Δt, Δx, γ)
 
     for i in 2:N-1
         ρ_star[i] = ρ[i] - Δt/Δx * (ρ[i]*u[i+1] - ρ[i-1]*u[i])
-        u_star[i] = u[i] - Δt/Δx * (ρ[i]*u[i+1]*u[i+1] + p[i+1] - ρ[i-1]*u[i]*u[i] - p[i-1]) / (ρ[i+1] - ρ[i-1])
+        u_star[i] = u[i] - Δt/Δx * (ρ[i]*u[i+1]*u[i+1] + p[i+1] - ρ[i-1]*u[i]*u[i] - p[i]) / (ρ[i+1] - ρ[i-1])
         p_star[i] = p[i] - Δt/Δx * (u[i+1]*(ρ[i+1]*u[i+1] + p[i+1]) - u[i]*(ρ[i-1]*u[i] + p[i-1])) / (ρ[i+1] - ρ[i-1])
     end
 
     # Corrector step
     for i in 2:N-1
         ρ[i] = 0.5 * (ρ[i] + ρ_star[i] - Δt/Δx * (ρ_star[i]*u_star[i] - ρ_star[i-1]*u_star[i-1]))
+        @infiltrate
         u[i] = 0.5 * (u[i] + u_star[i] - Δt/Δx * (ρ_star[i]*u_star[i]*u_star[i] + p_star[i] - ρ_star[i-1]*u_star[i-1]*u_star[i-1] - p_star[i-1]) / (ρ_star[i] - ρ_star[i-1]))
         p[i] = 0.5 * (p[i] + p_star[i] - Δt/Δx * (u_star[i]*(ρ_star[i]*u_star[i] + p_star[i]) - u_star[i-1]*(ρ_star[i-1]*u_star[i-1] + p_star[i-1])) / (ρ_star[i] - ρ_star[i-1]))
+        if any(isnan, ρ)
+            println("NaN found in ρ at iteration $i")
+            @infiltrate
+        end
+    end
+
+    # Reflective boundary condition at the right end
+    ρ[end] = ρ[end-1]
+    u[end] = -u[end-1]
+    p[end] = p[end-1]
+end
+
+function sod_shock_tube_laxwendroff!(ρ, u, p, Δt, Δx, γ)
+    N = length(ρ)
+
+    # Predictor step
+    ρ_star = copy(ρ)
+    u_star = copy(u)
+    p_star = copy(p)
+
+    for i in 2:N-1
+        ρ_star[i] = ρ[i] - 0.5 * Δt/Δx * (ρ[i+1]*u[i+1] - ρ[i-1]*u[i-1])
+        u_star[i] = u[i] - 0.5 * Δt/Δx * ((ρ[i+1]*u[i+1]^2 + p[i+1]) - (ρ[i-1]*u[i-1]^2 + p[i-1]))
+        p_star[i] = p[i] - 0.5 * Δt/Δx * (u[i+1]*(ρ[i+1]*u[i+1] + p[i+1]) - u[i-1]*(ρ[i-1]*u[i-1] + p[i-1]))
+    end
+
+    # Corrector step
+    for i in 2:N-1
+        ρ[i] = ρ[i] - Δt/Δx * (ρ_star[i]*u_star[i] - ρ_star[i-1]*u_star[i-1])
+        u[i] = u[i] - Δt/Δx * ((ρ_star[i]*u_star[i]^2 + p_star[i]) - (ρ_star[i-1]*u_star[i-1]^2 + p_star[i-1]))
+        p[i] = p[i] - Δt/Δx * (u_star[i]*(ρ_star[i]*u_star[i] + p_star[i]) - u_star[i-1]*(ρ_star[i-1]*u_star[i-1] + p_star[i-1]))
     end
 
     # Reflective boundary condition at the right end
@@ -91,6 +123,7 @@ function run()
     while t < t_final
         sod_shock_tube_upwind!(ρ, u, p, Δt, Δx, γ)
         #sod_shock_tube_maccormack!(ρ, u, p, Δt, Δx, γ)
+        #sod_shock_tube_laxwendroff!(ρ, u, p, Δt, Δx, γ)
         t += Δt
     end
 
