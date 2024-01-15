@@ -327,8 +327,8 @@ function conservative2D()
 
             if mod(iter, 25) == 0
                 it_counter += 1
-                print("err = $err\n")
-                err = maximum(abs.([rhoRes[:]; MxRes[:]; MyRes[:]]))                                                                      # error for time integration concerning density and momentum
+                err = maximum(abs.([rhoRes[:]; MxRes[:]; MyRes[:]]))
+                print("err = $err\n")                                                                      # error for time integration concerning density and momentum
                 if isnan(err) == 1 
                     break
                 end
@@ -354,7 +354,7 @@ function conservative2D()
             data_plt = sqrt.(U.^2 .+ V.^2)
 
             # hm = heatmap!(ax, x2dc, y2dc, P, shading=false, colormap=Reverse(:roma), colorrange=(P0, P0*2))
-            hm = heatmap!(ax, X, Y, data_plt, shading=false, colormap=Reverse(:roma), colorrange=(0.0, 350))
+            hm = heatmap!(ax, X, Y, data_plt, shading=false, colormap=Reverse(:roma), colorrange=(0.0, 1000.0))
             #Colorbar(fig1[1,2],  hm, label="Pressure [Pa]")
             Colorbar(fig1[1,2],  hm, label="Velocity [m/s]")
             lines!(ax, Xp, Yp, color = :white)
