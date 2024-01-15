@@ -89,8 +89,8 @@ function run()
     # Main time-stepping loop
     t = 0.0
     while t < t_final
-        #sod_shock_tube_upwind!(ρ, u, p, Δt, Δx, γ)
-        sod_shock_tube_maccormack!(ρ, u, p, Δt, Δx, γ)
+        sod_shock_tube_upwind!(ρ, u, p, Δt, Δx, γ)
+        #sod_shock_tube_maccormack!(ρ, u, p, Δt, Δx, γ)
         t += Δt
     end
 
@@ -107,7 +107,7 @@ function run()
     lines!(ax1, x, ρ)
     lines!(ax2, x, u)
     lines!(ax3, x, p)
-    save("./sod_shock_tube.png", fig)
+    #save("./sod_shock_tube.png", fig)
     display(fig)
 end
 
