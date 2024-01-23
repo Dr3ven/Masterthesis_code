@@ -2,175 +2,143 @@ using CairoMakie
 using Infiltrator
 using SodShockTube
 
+function check_upwind(u)
+    if u >= 0.0
+        return -1
+    elseif u < 0.0 
+        return 1
+    #else
+    #    return 0
+    end
+end
+
+function check_sign(u)
+    if u >= 0.0
+        return 1
+    elseif u < 0.0 
+        return -1
+    #else
+    #    return 0
+    end
+end
+
 function sod_shock_tube(ρ, u, p, γ)
     # Compute derived quantities
-    e = p / ((γ - 1)* ρ) + 0.5 * u^2  # Specific internal energy
-    #c = sqrt(γ * p / ρ)  # Speed of sound
-    
+    m = ρ * u   
+    e = p / ((γ - 1.0) * ρ)
+    E = ρ * e + 0.5 * m * u
+    #p = (γ - 1.0) * (ρ * E - 0.5 * m * u)
+
     # Conservative form of the equations
-    ρ_flux = ρ * u
-    momentum_flux = ρ * u^2 + p
-    energy_flux = u * (ρ * e + p)
+    ρ_flux = m
+    momentum_flux = m^2 / ρ
+    energy_flux = (m / ρ) * (E + p)
 
-    return [ρ_flux, momentum_flux, energy_flux]
+    return [ρ_flux, momentum_flux, energy_flux], m, e, E ,p
 end
 
-function sod_shock_tube_upwind!(ρ, u, p, Δt, Δx, γ)
-    N = length(ρ)
-
-    # Create arrays to store fluxes at cell interfaces
-    fluxes = zeros(N-1, 3)
-
-    # Compute fluxes using upwind scheme
-    for i in 1:N-1
-        if u[i] >= 0
-            fluxes[i, :] = sod_shock_tube(ρ[i], u[i], p[i], γ)
-        else
-            fluxes[i, :] = sod_shock_tube(ρ[i+1], u[i+1], p[i+1], γ)
+function sod_shock_tube_upwind!(ρ, u, p, γ) 
+    G = zeros(eltype(ρ), length(ρ) + 1, 3)
+    m = zeros(eltype(ρ), length(ρ))
+    e = zeros(eltype(ρ), length(ρ))
+    E = zeros(eltype(ρ), length(ρ))
+    
+    for i in 2:length(ρ)-1 
+        # Compute fluxes using upwind scheme
+        if u[i] >= 0.0
+            G[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i], u[i], p[i], γ)
+        elseif u[i] < 0.0
+            G[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i+1], u[i+1], p[i+1], γ)
+        #else
+        #    G[i, :] .= [0.0, 0.0, 0.0]
+        #    m[i] = ρ[i] * u[i]
+        #    e[i] = p[i] / ((γ - 1.0) * ρ[i])
+        #    E[i] = ρ[i] * e[i] + 0.5 * m[i] * u[i]
+            #p[i] = (γ - 1.0) * (ρ[i] * E[i] - 0.5 * m[i] * u[i])
         end
     end
-
-    # Update solution
-    for i in 2:N-1
-        ρ[i-1] -= Δt / Δx * (fluxes[i-1, 1] - fluxes[i, 1])
-        u[i-1] -= Δt / Δx * (fluxes[i-1, 2] - fluxes[i, 2])
-        p[i-1] -= Δt / Δx * (fluxes[i-1, 3] - fluxes[i, 3])
-    end
-
-    # Reflective boundary condition at the right end
-    ρ[end] = ρ[end-1]
-    u[end] = -u[end-1]
-    p[end] = p[end-1]
-end
-
-function sod_shock_tube_maccormack!(ρ, u, p, Δt, Δx, γ)
-    N = length(ρ)
-
-    # Predictor step
-    ρ_star = copy(ρ)
-    u_star = copy(u)
-    p_star = copy(p)
-
-    for i in 2:N-1
-        ρ_star[i] = ρ[i] - Δt/Δx * (ρ[i]*u[i+1] - ρ[i-1]*u[i])
-        u_star[i] = u[i] - Δt/Δx * (ρ[i]*u[i+1]*u[i+1] + p[i+1] - ρ[i-1]*u[i]*u[i] - p[i]) / (ρ[i+1] - ρ[i-1])
-        p_star[i] = p[i] - Δt/Δx * (u[i+1]*(ρ[i+1]*u[i+1] + p[i+1]) - u[i]*(ρ[i-1]*u[i] + p[i-1])) / (ρ[i+1] - ρ[i-1])
-    end
-
-    # Corrector step
-    for i in 2:N-1
-        ρ[i] = 0.5 * (ρ[i] + ρ_star[i] - Δt/Δx * (ρ_star[i]*u_star[i] - ρ_star[i-1]*u_star[i-1]))
-        @infiltrate
-        u[i] = 0.5 * (u[i] + u_star[i] - Δt/Δx * (ρ_star[i]*u_star[i]*u_star[i] + p_star[i] - ρ_star[i-1]*u_star[i-1]*u_star[i-1] - p_star[i-1]) / (ρ_star[i] - ρ_star[i-1]))
-        p[i] = 0.5 * (p[i] + p_star[i] - Δt/Δx * (u_star[i]*(ρ_star[i]*u_star[i] + p_star[i]) - u_star[i-1]*(ρ_star[i-1]*u_star[i-1] + p_star[i-1])) / (ρ_star[i] - ρ_star[i-1]))
-        if any(isnan, ρ)
-            println("NaN found in ρ at iteration $i")
-            @infiltrate
-        end
-    end
-
-    # Reflective boundary condition at the right end
-    ρ[end] = ρ[end-1]
-    u[end] = -u[end-1]
-    p[end] = p[end-1]
-end
-
-function sod_shock_tube_laxwendroff!(ρ, u, p, Δt, Δx, γ)
-    N = length(ρ)
-
-    # Predictor step
-    ρ_star = copy(ρ)
-    u_star = copy(u)
-    p_star = copy(p)
-
-    for i in 2:N-1
-        ρ_star[i] = ρ[i] - 0.5 * Δt/Δx * (ρ[i+1]*u[i+1] - ρ[i-1]*u[i-1])
-        u_star[i] = u[i] - 0.5 * Δt/Δx * ((ρ[i+1]*u[i+1]^2 + p[i+1]) - (ρ[i-1]*u[i-1]^2 + p[i-1]))
-        p_star[i] = p[i] - 0.5 * Δt/Δx * (u[i+1]*(ρ[i+1]*u[i+1] + p[i+1]) - u[i-1]*(ρ[i-1]*u[i-1] + p[i-1]))
-    end
-
-    # Corrector step
-    for i in 2:N-1
-        ρ[i] = ρ[i] - Δt/Δx * (ρ_star[i]*u_star[i] - ρ_star[i-1]*u_star[i-1])
-        u[i] = u[i] - Δt/Δx * ((ρ_star[i]*u_star[i]^2 + p_star[i]) - (ρ_star[i-1]*u_star[i-1]^2 + p_star[i-1]))
-        p[i] = p[i] - Δt/Δx * (u_star[i]*(ρ_star[i]*u_star[i] + p_star[i]) - u_star[i-1]*(ρ_star[i-1]*u_star[i-1] + p_star[i-1]))
-    end
-
-    # Reflective boundary condition at the right end
-    ρ[end] = ρ[end-1]
-    u[end] = -u[end-1]
-    p[end] = p[end-1]
+    return G, m, e, E, p
 end
 
 function run()
     # Simulation parameters
     γ = 1.4  # Ratio of specific heats for air
-    N = 501   # Number of nodes
+    N = 101   # Number of nodes
     Δx = 0.01
     Δt = 0.0001
-    t_final = 0.2
+    t_final = 0.14
 
     x = Array(range(0.0, stop=1.0, length=N))
     # Initial conditions for the Sod Shock Tube
     ρ = ones(N)
+    fluxes = zeros(eltype(ρ), N + 1, 3)
     u = zeros(N)
     p = ones(N)
+    m = zeros(N)
+    e = zeros(N)
+    E = ones(N) .* 2.5
+
     ρ[div(N, 2):end] .= 0.125
     p[div(N, 2):end] .= 0.1
+    E[div(N, 2):end] .= 0.0
 
     # Main time-stepping loop
     t = 0.0
-    while t < t_final
-        sod_shock_tube_upwind!(ρ, u, p, Δt, Δx, γ)
-        #sod_shock_tube_maccormack!(ρ, u, p, Δt, Δx, γ)
-        #sod_shock_tube_laxwendroff!(ρ, u, p, Δt, Δx, γ)
-        t += Δt
-    end
 
-    # Display the final results
-    println("Density: ", ρ)
-    println("Velocity: ", u)
-    println("Pressure: ", p)
-
-    fig = Figure(size = (800, 800))
+    fig = Figure(size = (800, 600))
     ax1 = Axis(fig[1,1], title="Density", xlabel="x", ylabel="ρ")
     ax2 = Axis(fig[1,2], title="Velocity", xlabel="x", ylabel="u")
     ax3 = Axis(fig[2,1], title="Pressure", xlabel="x", ylabel="p")
+    ax4 = Axis(fig[2,2], title="Energy", xlabel="x", ylabel="E")
 
-    lines!(ax1, x, ρ)
-    lines!(ax2, x, u)
-    lines!(ax3, x, p)
-    #save("./sod_shock_tube.png", fig)
+    scatter!(ax1, x, ρ)
+    scatter!(ax2, x, m ./ ρ)
+    scatter!(ax3, x, p)
+    scatter!(ax4, x, E)
     display(fig)
-end
+    counter = 0
+    while t < t_final
+        counter += 1
+        for i in 2:N-1
+                # Compute fluxes using upwind scheme
+                s_u = check_upwind(u[i])
+                sgn = check_sign(u[i])
+                
+                #fluxes, m, e, E, p = sod_shock_tube_upwind!(ρ, u, p, γ)
+                if u[i] >= 0.0
+                    fluxes[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i], u[i], p[i], γ)
+                elseif u[i] < 0.0
+                    fluxes[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i+1], u[i+1], p[i+1], γ)
+                end
 
-###-------------------------------------------------------------------------###
+                # Update solution # INDIZES STIMMEN NICHT - bzw. muss überlegen wie das sinn macht 
+                ρ[i] = ρ[i] - sgn * (Δt / Δx) * (fluxes[i,1] - fluxes[i+s_u,1])
+                e[i] = p[i] / ((γ - 1.0) * ρ[i])
+                m[i] = m[i] - sgn * (Δt / Δx) * (fluxes[i,2] - fluxes[i+s_u,2]) - (Δt / (2 * Δx)) * (p[i+1] - p[i-1])
+                #E[i] = ρ[i] * e[i] + 0.5 * m[i] * u[i]
+                E[i] = E[i] - sgn * (Δt / Δx) * (fluxes[i,3] - fluxes[i+s_u,3])
+                
+                p[i] = (γ - 1.0) * (E[i] - 0.5 * m[i] * u[i])
+                u[i] = m[i] / ρ[i]
 
-function shock_tube_benchmark()
-    problem = ShockTubeProblem(
-            geometry = (0.0, 1.0, 0.5),
-            left_state = (ρ = 1.0, u = 0.0, p = 1.0),
-            right_state = (ρ = 0.125, u = 0.0, p = 0.1),
-            t = 0.2,
-            γ = 1.4
-        );
+        end
 
-    xs = LinRange(0.0, 1.0, 500);
-    positions, regions, values = solve(problem, xs)
+        t += Δt
 
-    f = Figure(size = (800, 800))
-    ax_ρ = Axis(f[1,1], xlabel = "x", ylabel = "ρ", title = "Density")
-    ax_u = Axis(f[2,1], xlabel = "x", ylabel = "u", title = "Velocity")
-    ax_p = Axis(f[1,2], xlabel = "x", ylabel = "p", title = "Pressure")
-    ax_E = Axis(f[2,2], xlabel = "x", ylabel = "E", title = "Stagnation Energy")
+        if mod(counter, 20) == 0.0
+            # Display the final results
+            fig = Figure(size = (800, 600))
+            ax1 = Axis(fig[1,1], title="Density, t=$t", xlabel="x", ylabel="ρ")
+            ax2 = Axis(fig[1,2], title="Velocity, t=$t", xlabel="x", ylabel="u")
+            ax3 = Axis(fig[2,1], title="Pressure, t=$t", xlabel="x", ylabel="p")
+            ax4 = Axis(fig[2,2], title="Energy, t=$t", xlabel="x", ylabel="E")
 
-    opts = (;linewidth = 4)
-
-    lines!(ax_ρ, values.x, values.ρ; opts...)
-    lines!(ax_u, values.x, values.u; opts...)
-    lines!(ax_p, values.x, values.p; opts...)
-    lines!(ax_E, values.x, values.e; opts...)
-
-    display(f)
-    save("./sod_shock_tube_package.png", f)
+            scatter!(ax1, x, ρ)
+            scatter!(ax2, x, m ./ ρ)
+            scatter!(ax3, x, p)
+            scatter!(ax4, x, E)
+            #save("./sod_shock_tube.png", fig)
+            display(fig)
+        end
+    end
 end
