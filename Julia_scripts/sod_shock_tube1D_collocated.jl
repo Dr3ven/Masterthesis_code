@@ -51,8 +51,8 @@ function sod_collocated()
     p = ones(eltype(ρ), N)
     m = zeros(eltype(ρ), N)
     e = ones(eltype(ρ), N)
+    e_ana = zeros(eltype(ρ), N)
     E = zeros(eltype(ρ), N)
-    E_ana = zeros(eltype(ρ), N)
 
     # Initial conditions for the Sod Shock Tube
     ρ[div(N, 2):end] .= 0.125
