@@ -125,7 +125,7 @@ function sod_collocated()
             ax1 = Axis(fig[1,1], title="Density, t=$t", xlabel="x", ylabel="ρ")
             ax2 = Axis(fig[1,2], title="Velocity", xlabel="x", ylabel="u")
             ax3 = Axis(fig[2,1], title="Pressure", xlabel="x", ylabel="p")
-            ax4 = Axis(fig[2,2], title="Entropy", xlabel="x", ylabel="e")
+            ax4 = Axis(fig[2,2], title="Energy", xlabel="x", ylabel="e")
 
             opts = (;linewidth = 2, color = :red)
             # Upwind
