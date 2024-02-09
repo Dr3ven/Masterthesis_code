@@ -61,6 +61,8 @@ function sod_staggered()
     ρ[div(N, 2):end] .= 0.125
     p[div(N, 2):end] .= 0.1
     #e .= p ./ ((γ .- 1.0) .* ρ)
+    E .= p ./ (γ .- 1.0) + 0.5 .* ρ .* av_x(u).^2
+    e .= p ./ (γ .- 1.0) .* ρ
 
     # Main time-stepping loop
     t = 0.0
@@ -112,8 +114,8 @@ function sod_staggered()
                 E[i] = E[i] - sgn * (Δt / Δx) * (fluxes[i,3] - fluxes[i+s_u,3])
                 
                 # Calculate pressure and velocity
-                p[i] = (γ - 1.0) * (E[i] - 0.5 * m[i] * u[i])
                 u[i] = m[i] / ρ[i]
+                p[i] = (γ - 1.0) * (E[i] - 0.5 * m[i] * u[i])
         end
 
         t += Δt
