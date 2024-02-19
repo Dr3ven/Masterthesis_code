@@ -7,16 +7,19 @@ end
 function upwind()
 end
 
-function ac_wave1D()
+function ac_wave1D_up()
     # Physics
-    Lx = 10.0                           # domain
+    Lx = 1.0                           # domain
     K = 1.0e10                             # shear modulus
     ρ0 = 3.0e3                          # initial density at all points
-    P0 = 1.0e7                          # initial pressure at all points
+    P0 = 1.0e6                          # initial pressure at all points
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
+
+    # Plotting parameters
+    divisor = 1000 
 
     # Numerics
     nx = 200                             # number of nodes in x
@@ -49,11 +52,14 @@ function ac_wave1D()
     xc_vec = Array(xc)
     xv_vec = Array(xv)
 
+    linplots = []
+
     # Initial plotting
     fig = Figure(size=(600, 800))
-    ax1 = Axis(fig[1,1], title="Pressure, time = $(round(t))",ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
-    ax2 = Axis(fig[2,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    lines!(ax1, xc_vec, P)
+    ax1 = Axis(fig[1,1], title="Pressure",ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
+    ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    l0 = lines!(ax1, xc_vec, P)
+    push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
     #save("../Plots/Navier-Stokes_acoustic_wave/with_advection_more_realistic_params/same_but_more_beautifull/$(0).png", fig)
     display(fig)
@@ -74,13 +80,16 @@ function ac_wave1D()
         Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx 
 
         t += dt
-        if i % 600 == 0
+        if i % divisor == 0
             #fig2 = Figure(size=(600, 800))
-            
-            lines!(ax1, xc_vec, P)
+            li = lines!(ax1, xc_vec, P, label="time = $t")
+            push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             #save("../Plots/Navier-Stokes_acoustic_wave/with_advection_more_realistic_params/same_but_more_beautifull/$(i).png", fig2)
             display(fig)
         end
     end
+
+    Legend(fig[2,1], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=1, orientation=:horizontal, tellhight = false, tellwidth = false)
+    display(fig)
 end

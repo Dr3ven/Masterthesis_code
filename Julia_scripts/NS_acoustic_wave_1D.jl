@@ -14,6 +14,9 @@ function ac_wave1D()
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
+    
+    # Plotting parameters
+    divisor = 2000 
 
     # Numerics
     nx = 200                             # number of nodes in x
@@ -74,7 +77,7 @@ function ac_wave1D()
         Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt
 
         t += dt
-        if i % 2000 == 0
+        if i % divisor == 0
             #fig2 = Figure(size=(600, 800))
             #ax1 = Axis(fig2[1,1], title="Pressure, time = $t")#, limits=(nothing, nothing, -0.25, 0.25))
             #ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
@@ -85,6 +88,6 @@ function ac_wave1D()
             display(fig)
         end
     end
-    Legend(fig[2,1], linplots, string.(0:1.0e-8*2000:1.0e-8*10000), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
+    Legend(fig[2,1], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
     display(fig)
 end
