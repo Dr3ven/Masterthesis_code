@@ -50,7 +50,7 @@ function ac_wave1D()
 
     # Initial plotting
     fig = Figure(size=(600, 800))
-    ax1 = Axis(fig[1,1], title="Pressure, time = $(round(t))",ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
+    ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
     ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     l0 = lines!(ax1, xc_vec, P)
     push!(linplots, l0)
@@ -85,6 +85,6 @@ function ac_wave1D()
             display(fig)
         end
     end
-    Legend(fig[2,1], linplots, string.(0:2000:nt), nbanks=2, position=:tr, orientation=:horizontal, tellhight = false, tellwidth = false)
+    Legend(fig[2,1], linplots, string.(0:1.0e-8*2000:1.0e-8*10000), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
     display(fig)
 end
