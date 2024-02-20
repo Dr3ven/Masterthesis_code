@@ -1,10 +1,8 @@
 using CairoMakie
+using Infiltrator
 
 function av_x(B)
     A = 0.5 .* (B[2:end,:] .+ B[1:end-1,:])
-end
-
-function upwind()
 end
 
 function ac_wave1D_up()
@@ -17,14 +15,14 @@ function ac_wave1D_up()
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
-
+    
     # Plotting parameters
-    divisor = 1000 
+    divisor = 2000 
 
     # Numerics
-    nx = 200                             # number of nodes in x
+    nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 2000                             # number of time steps
+    nt = 10000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -42,11 +40,12 @@ function ac_wave1D_up()
 
     # Initial conditions
     P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
-    c = sqrt(K / ρ0)                                # speed of sound
+    #P[Int((48/100)*nx):Int((48/100)*nx)] .= P0 .+ A
+    c = sqrt(K / ρ0)                # speed of sound
     ρ .= P ./ c^2.0                                 # initial density distribution
     #P .= c.^2.0 .* ρ                                 # initial pressure distribution
 
-    dt = 1e-8 #dx / (c * 4.0)                      # time step size
+    dt = 1.0e-9 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
     xc_vec = Array(xc)
@@ -56,12 +55,12 @@ function ac_wave1D_up()
 
     # Initial plotting
     fig = Figure(size=(600, 800))
-    ax1 = Axis(fig[1,1], title="Pressure",ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
+    ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
     ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    l0 = lines!(ax1, xc_vec, P)
+    l0 = lines!(ax1, xc_vec, P, label="time = 0")
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
-    #save("../Plots/Navier-Stokes_acoustic_wave/with_advection_more_realistic_params/same_but_more_beautifull/$(0).png", fig)
+    #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
     display(fig)
 
     for i = 1:nt
@@ -77,19 +76,22 @@ function ac_wave1D_up()
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* diff(ρ .* av_x(Vx), dims=1) ./ dx
-        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx 
+        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt
 
         t += dt
         if i % divisor == 0
             #fig2 = Figure(size=(600, 800))
+            #ax1 = Axis(fig2[1,1], title="Pressure, time = $t")#, limits=(nothing, nothing, -0.25, 0.25))
+            #ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
-            #save("../Plots/Navier-Stokes_acoustic_wave/with_advection_more_realistic_params/same_but_more_beautifull/$(i).png", fig2)
+            #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             display(fig)
         end
     end
-
-    Legend(fig[2,1], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=1, orientation=:horizontal, tellhight = false, tellwidth = false)
+    @infiltrate
+    Legend(fig[2,1], linplots, string.(round.(0:dt*divisor:dt*nt+dt*divisor, digits=8)), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
+    save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/All_in_one.png", fig)
     display(fig)
 end

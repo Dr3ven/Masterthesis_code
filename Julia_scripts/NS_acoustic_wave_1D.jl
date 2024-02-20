@@ -89,5 +89,6 @@ function ac_wave1D()
         end
     end
     Legend(fig[2,1], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
+    #save("../Plots/Navier-Stokes_acoustic_wave/with_realistic_parameterss/All_in_one.png", fig)
     display(fig)
 end
