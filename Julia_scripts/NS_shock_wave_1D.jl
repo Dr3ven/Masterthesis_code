@@ -9,21 +9,21 @@ function ac_wave1D_up()
     # Physics
     Lx = 1.0                           # domain
     γ = 1.4
-    K = 1.0e10                             # shear modulus
-    ρ0 = 3.0e3                          # initial density at all points
-    P0 = 1.0e6                          # initial pressure at all points
+    K = 1.42e5                             # shear modulus
+    ρ0 = 1.0                          # initial density at all points
+    P0 = 1.0e5                          # initial pressure at all points
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 2000 
+    divisor = 400000 
 
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 10000                             # number of time steps
+    nt = 2000000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -45,10 +45,13 @@ function ac_wave1D_up()
     EdVxdx = zeros(nx - 2)
 
     # Initial conditions
-    P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
-    #P[Int((48/100)*nx):Int((48/100)*nx)] .= P0 .+ A
+    #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
+    P[1:Int((48/100)*nx)] .= P0 .+ A
+    ρ[1:Int((48/100)*nx)] .= ρ0 .+ A
+    P[Int((48/100)*nx):end] .= P0
+    ρ[Int((49/100)*nx):end] .= ρ0
     c = sqrt(K / ρ0)                # speed of sound
-    E = P./((γ - 1.0)) + 0.5.*av_x(Vx).^2
+    E .= P./((γ - 1.0)) + 0.5.*av_x(Vx).^2
     #ρ .= P ./ c^2.0                                 # initial density distribution
 
     dt = 1.0e-9 #dx / (c * 4.0)                      # time step size
@@ -60,14 +63,14 @@ function ac_wave1D_up()
     linplots = []
 
     # Initial plotting
-    fig = Figure(size=(600, 800))
+    fig = Figure(size=(1000, 800))
     ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
     ax2 = Axis(fig[2,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     ax3 = Axis(fig[1,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     l0 = lines!(ax1, xc_vec, P, label="time = 0")
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
-    lines!(ax2, xc_vec, E)
+    lines!(ax3, xc_vec, E)
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
     display(fig)
 
@@ -94,9 +97,10 @@ function ac_wave1D_up()
 
         t += dt
         if i % divisor == 0
-            #fig2 = Figure(size=(600, 800))
+            #fig2 = Figure(size=(1000, 800))
             #ax1 = Axis(fig2[1,1], title="Pressure, time = $t")#, limits=(nothing, nothing, -0.25, 0.25))
             #ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
+            #ax3 = Axis(fig2[1,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
@@ -106,8 +110,8 @@ function ac_wave1D_up()
         end
     end
     #@infiltrate
-    # ENERGY neu jetzt die Legende mit einbauen
-    Legend(fig[2,2], linplots, string.(round.(0:dt*divisor:dt*nt+dt*divisor, digits=8)), "Total time", nbanks=2)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    # ENERGY neu jetzt die Legende mit einbauen +dt*divisor
+    Legend(fig[2,2], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", nbanks=2, tellwidth = false)#, orientation=:horizontal, tellhight = false)
     save("../Plots/Navier-Stokes_shock_wave/all_terms_chain_rule_form/All_in_one.png", fig)
     display(fig)
 end
