@@ -15,9 +15,9 @@ extend_vertices(x) = [x[1]; x; x[end]];
 Compute the flux using a 1D upwind scheme
 """
 function flux_upwind(u, G, dx)
-    G_p = (G[2:end-1] - G[1:end-2])/dx
-    G_m = (G[2:end-1] + G[3:end])/dx
-    Gflux = sign.(u[2:end-1]).*(G_p.*(u[2:end-1] .> 0) + G_m.*(u[2:end-1] .< 0))
+    G_p = (G[2:end-1] .- G[1:end-2])./dx
+    G_m = (G[2:end-1] .+ G[3:end])./dx
+    Gflux = sign.(u[2:end-1]).*(G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
 
     return Gflux
 end
@@ -25,42 +25,46 @@ end
 # attempt to do upwind in staggered formulation
 function flux_upwind_center(u, G, dx)
     
-    G_p = (G[2:end-1] - G[1:end-2])/dx
-    G_m = (G[2:end-1] + G[3:end])/dx
+    G_p = (G[2:end-1] .- G[1:end-2])./dx
+    G_m = (G[2:end-1] .+ G[3:end])./dx
     u_c = average(u)
-    Gflux = sign.(u_c[2:end-1]).*(G_p.*(u_c[2:end-1] .> 0) + G_m.*(u_c[2:end-1] .< 0))
+    Gflux = sign.(u_c[2:end-1]).*(G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
 
     return Gflux
 end
 
-function run(; wave=true)
+function wave_b(; wave=true)
     # Parameters
-    L = 1000.0             # Length of the domain
+    L = 1.0             # Length of the domain
     Nx = 100           # Number of spatial grid points
-    Nt = 10000; #1400           # Number of time steps
+    Nt = 100000; #1400           # Number of time steps
     dx = L / (Nx - 1)   # Spatial grid spacing
-    dt = 1e-6           # Temporal grid spacing
-    σ = 10
+    dt = 1e-8           # Temporal grid spacing
+    σ = Lx * 0.04
+    A = 10.0
 
     # Initial conditions
-    ρ0 = 1.0    # Initial density
+    ρ0 = 3000.0     # Initial density
+    P0 = 1.0e6      # Initial pressure
+    K  = 1.0e10     # Bulk modulus
     μ  = 1e-3
     γ  = 1.4
-    c = 5000.0 # velocity of sound
+    c = sqrt(K / ρ0)                # speed of sound
+    #c = 5000.0 # velocity of sound
     
     # Arrays to store results
     x   = 0:dx:L
     x_c = average(x)
     u   = zeros(Nx)           # initial u at rest
-    ρ   = ones(Nx-1) .* 3000
-    ρ_v = ones(Nx) .* 3000            # @ vertices
-    P   = ones(Nx-1) .* 3000*c^2
+    ρ   = ones(Nx-1) .* ρ0
+    ρ_v = ones(Nx) .* ρ0             # @ vertices
+    P   = ones(Nx-1) 
 
     if wave == false
         ρ[x_c .> 0.5] .= 0.125
         P[x_c .> 0.5] .= 0.1
     else 
-        P .=  P .+ P .* 1e-3.*exp.(.- 0.01 .* ((x_c .- 0.5*L) ./ σ).^2.0)        # initial pressure distribution
+        P .= P0 .+ A .*exp.(.- 0.01 .* ((x_c .- 0.5*L) ./ σ).^2.0)        # initial pressure distribution
         ρ .= P./c.^2.0  
     end
 
@@ -68,7 +72,7 @@ function run(; wave=true)
     # compute conservative variables
     m = average(ρ).*u[2:end-1]
     m = [m[1]; m; m[end]]
-    E = P./((γ - 1.0)) + 0.5.*average(u).^2
+    E = P ./ (γ .- 1.0) .+ 0.5.*average(u).^2
     t = 0
 
     # Time-stepping loop
@@ -79,17 +83,25 @@ function run(; wave=true)
         # Note that this specified at the center of a control volume
         # ∂ρ/∂t + ∂(ρu)/∂x = 0
         ρ_v = extend_vertices(average(ρ))
-        ρ[2:end-1]      -=   dt * flux_upwind_center(u, ρ.*average(u), dx)
+        ρ[2:end-1]      .-=   dt .* flux_upwind_center(u, ρ.*average(u), dx)
 
         # update ρu (momentum) using the momentum equation:
         # This is formulated around the vertices of the control volume  
 
+        #if wave == false
+        #    P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
+        #else
+        #    P .= ρ.*c.^2.0;
+        #end
+
         # ∂(m)/∂t + ∂(u*m + P)/∂x = 0
-        m[2:end-1]      -=   dt * 0*flux_upwind(u, (m.^2)./ρ_v, dx) + dt/dx.*(P[2:end] - P[1:end-1])
+        #P_v = extend_vertices(average(P))
+        m[2:end-1]      .-=   dt .* flux_upwind(u, (m.^2)./ρ_v, dx) .+ (dt./dx) .* (P[2:end] .- P[1:end-1])
+
 
         # update energy 
         # ∂e/∂t + ∂/∂x( (ρu/ρ)(E + P) ) = 0
-        E[2:end-1]      -=  dt* flux_upwind_center(u, average(u).*(E + P), dx)
+        E[2:end-1]      .-=  dt .* flux_upwind_center(u, average(u).*(E .+ P), dx)
 
         # 
         ρ_v = extend_vertices(average(ρ))
@@ -97,16 +109,16 @@ function run(; wave=true)
         u_c = average(u)
         
         if wave == false
-            P = (γ - 1.0) .* (E - 0.5*ρ.* u_c.^2)
+            P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
         else
-            P = ρ.*c.^2.0;
+            P .= ρ.*c.^2.0;
         end
-        #P = ρ
+        P = ρ
 
         if mod(n,1) == 0
             c_anal = sqrt.(abs.(γ*P./ρ))     # shouldnt go negative but sometimes does
-            dt_courant = dx/(maximum(abs.(u_c) + c_anal))
-            @show dt_courant, t
+            #dt_courant = dx/(maximum(abs.(u_c) + c_anal))
+            #@show dt_courant, t
 
             problem = ShockTubeProblem(
                             geometry = (0.0, 1.0, 0.5), # left edge, right edge, initial shock location
@@ -145,4 +157,4 @@ function run(; wave=true)
    return ρ, u, P, E
 end
 
-ρ_b, u_b, P_b, E_b = run()
+#ρ_b, u_b, P_b, E_b = run()
