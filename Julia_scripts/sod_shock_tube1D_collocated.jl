@@ -3,18 +3,22 @@ using Infiltrator
 using SodShockTube
 
 function check_upwind(u)
-    if u >= 0.0
+    if u > 0.0
         return -1
     elseif u < 0.0 
         return 1
+    else
+        return 0
     end
 end
 
 function check_sign(u)
-    if u >= 0.0
+    if u > 0.0
         return 1
     elseif u < 0.0 
         return -1
+    else
+        return 0
     end
 end
 
@@ -57,6 +61,7 @@ function sod_collocated()
     # Initial conditions for the Sod Shock Tube
     ρ[div(N, 2):end] .= 0.125
     p[div(N, 2):end] .= 0.1
+    E .= p ./ (γ .- 1.0) + 1.0 ./ 2.0 .* u.^ 2
     e .= p ./ ((γ .- 1.0) .* ρ)
 
     # Initial plotting
@@ -64,12 +69,12 @@ function sod_collocated()
     ax1 = Axis(fig[1,1], title="Density", xlabel="x", ylabel="ρ")
     ax2 = Axis(fig[1,2], title="Velocity", xlabel="x", ylabel="u")
     ax3 = Axis(fig[2,1], title="Pressure", xlabel="x", ylabel="p")
-    ax4 = Axis(fig[2,2], title="Energy", xlabel="x", ylabel="E")
+    ax4 = Axis(fig[2,2], title="Energy", xlabel="x", ylabel="e")
 
     scatter!(ax1, x, ρ)
     scatter!(ax2, x, m ./ ρ)
     scatter!(ax3, x, p)
-    scatter!(ax4, x, E)
+    scatter!(ax4, x, e)
     display(fig)
     
     # Analytical solution from SodShockTube.jl
@@ -92,34 +97,39 @@ function sod_collocated()
         # Counter for plotting
         counter += 1
         # Speed of sound
-        c .= sqrt.((γ .* p) ./ ρ)
+        #c .= sqrt.((γ .* p) ./ ρ)
         # Stability criterion σ ≤ 1
         # σ = maximum(abs.(u) + c) .* (Δt ./ Δx) 
         for i in 2:N-1
-                # Check sign of velocity and set parameter s_u accordingly as in Sod, 1978
-                s_u = check_upwind(u[i])
-                sgn = check_sign(u[i])
-                
-                # Compute fluxes using upwind scheme
-                if u[i] >= 0.0
-                    fluxes[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i], u[i], p[i], γ)
-                elseif u[i] < 0.0
-                    fluxes[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i+1], u[i+1], p[i+1], γ)
-                end
+            # Check sign of velocity and set parameter s_u accordingly as in Sod, 1978
+            s_u = check_upwind(u[i])
+            sgn = check_sign(u[i])
+            
+            # Compute fluxes using upwind scheme
+            if u[i] > 0.0
+                fluxes[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i], u[i], p[i], γ)
+            elseif u[i] < 0.0
+                fluxes[i, :], m[i] , e[i], E[i], p[i] = sod_shock_tube(ρ[i+1], u[i+1], p[i+1], γ)
+            else
+                fluxes[:, 1] .= 0.0
+                fluxes[:, 2] .= 0.0
+                fluxes[:, 3] .= 0.0
+            end
 
-                # Update solution
-                ρ[i] = ρ[i] - sgn * (Δt / Δx) * (fluxes[i,1] - fluxes[i+s_u,1])
-                m[i] = m[i] - sgn * (Δt / Δx) * (fluxes[i,2] - fluxes[i+s_u,2]) - (Δt / (2 * Δx)) * (p[i+1] - p[i-1])
-                E[i] = E[i] - sgn * (Δt / Δx) * (fluxes[i,3] - fluxes[i+s_u,3])
-                
-                # Calculate pressure and velocity
-                p[i] = (γ - 1.0) * (E[i] - 0.5 * m[i] * u[i])
-                u[i] = m[i] / ρ[i]
+            # Update solution
+            ρ[i] = ρ[i] - sgn * (Δt / Δx) * (fluxes[i,1] - fluxes[i+s_u,1])
+            m[i] = m[i] - sgn * (Δt / Δx) * (fluxes[i,2] - fluxes[i+s_u,2]) - (Δt / (2 * Δx)) * (p[i+1] - p[i-1])
+            E[i] = E[i] - sgn * (Δt / Δx) * (fluxes[i,3] - fluxes[i+s_u,3])  
+        end
+        # Calculate pressure and velocity
+        for i in 1:N
+            u[i] = m[i] / ρ[i]
+            p[i] = (γ - 1.0) * (E[i] - 0.5 * m[i] * u[i])
         end
         # Update time
         t += Δt
 
-        if mod(counter, 20) == 0.0
+        if mod(counter, t_final / Δt) == 0.0
             # Display the final results
             fig = Figure(size = (800, 600))
             ax1 = Axis(fig[1,1], title="Density, t=$t", xlabel="x", ylabel="ρ")
@@ -138,7 +148,7 @@ function sod_collocated()
             lines!(ax2, x, u_ana; opts...)
             lines!(ax3, x, p_ana; opts...)
             lines!(ax4, x, e_ana; opts...)
-            #save("./sod_shock_tube.png", fig)
+            #save("./sod_shock_tube_collocated_new.png", fig)
             display(fig)
         end
     end
