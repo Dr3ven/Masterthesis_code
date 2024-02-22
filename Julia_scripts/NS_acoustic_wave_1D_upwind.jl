@@ -5,6 +5,26 @@ function av_x(B)
     A = 0.5 .* (B[2:end,:] .+ B[1:end-1,:])
 end
 
+function upwind(u, G, dx)
+    G_p = (G[2:end-1] .- G[1:end-2])./dx
+    G_m = (G[3:end] .- G[2:end-1])./dx
+    #@infiltrate
+    Gflux = (G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
+
+    return Gflux
+end
+
+function upwind_center(u, G, dx)
+    G_p = (G[2:end-1] .- G[1:end-2])./dx
+    G_m = (G[3:end] .- G[2:end-1])./dx
+    u_c = av_x(u)
+    Gflux = (G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
+
+    return Gflux
+end
+
+extend_vertices(x) = [x[1]; x; x[end]];
+
 function ac_wave1D_up()
     # Physics
     Lx = 1.0                           # domain
@@ -45,7 +65,7 @@ function ac_wave1D_up()
     ρ .= P ./ c^2.0                                 # initial density distribution
     #P .= c.^2.0 .* ρ                                 # initial pressure distribution
 
-    dt = 1.0e-9 #dx / (c * 4.0)                      # time step size
+    dt = 5.0e-9 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
     xc_vec = Array(xc)
@@ -67,15 +87,16 @@ function ac_wave1D_up()
         #c = sqrt(K / maximum(ρ))                # speed of sound
         #@show c
 
-        Vxdρdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(ρ), dims=1) ./ dx
+        Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx)
         ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
         ρ[2:end-1] .= ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
 
         P .= c.^2.0 .* ρ
 
+        ρ_v = extend_vertices(av_x(ρ))
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
-        VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* diff(ρ .* av_x(Vx), dims=1) ./ dx
+        VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx)
         Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt
 
         t += dt
@@ -90,8 +111,9 @@ function ac_wave1D_up()
             display(fig)
         end
     end
-    @infiltrate
-    Legend(fig[2,1], linplots, string.(round.(0:dt*divisor:dt*nt+dt*divisor, digits=8)), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
-    save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/All_in_one.png", fig)
+    #@infiltrate
+    # +dt*divisor
+    Legend(fig[2,1], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
+    save("../Plots/Navier-Stokes_acoustic_wave/with_realistic_parameters_upwind_v2/All_in_one.png", fig)
     display(fig)
 end
