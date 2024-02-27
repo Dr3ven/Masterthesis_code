@@ -41,7 +41,7 @@ function shock_wave1D_up()
     divisor = 280 
 
     # Numerics
-    nx = 100                             # number of nodes in x
+    nx = 200                             # number of nodes in x
     dx = Lx / nx                        # step size in x
     nt = 1400                             # number of time steps
 
@@ -51,11 +51,13 @@ function shock_wave1D_up()
 
     # Allocations
     ρ = ones(nx) .* ρ0
+    ρ_old = zeros(nx)
     P = ones(nx) .* P0
     Vx = zeros(nx + 1)
     E = zeros(nx)
     Vxdρdx = zeros(nx - 2)
     ρdVxdt = zeros(nx - 2)
+    Vxdρdt = zeros(nx - 1)
     ρdPdx = zeros(nx - 1)
     ρVxdVxdx = zeros(nx - 1)
     VxdρVxdx = zeros(nx - 1)
@@ -66,8 +68,8 @@ function shock_wave1D_up()
 
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
-    P[Int((51/100)*nx):end] .= 0.1
-    ρ[Int((51/100)*nx):end] .= 0.125
+    P[Int((50/100)*nx):end] .= 0.1
+    ρ[Int((50/100)*nx):end] .= 0.125
     c = sqrt(K / ρ0)                # speed of sound
     E .= P./((γ - 1.0)) + 0.5.*av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
@@ -77,6 +79,15 @@ function shock_wave1D_up()
 
     xc_vec = Array(xc)
     xv_vec = Array(xv)
+
+    # Analytical solution 
+    problem = ShockTubeProblem(
+                geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
+                left_state = (ρ = 1.0, u = 0.0, p = 1.0),
+                right_state = (ρ = 0.125, u = 0.0, p = 0.1),
+                t = 0.14, γ = γ)
+    positions, regions, values = solve(problem, xc);
+    e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
 
     linplots = []
 
@@ -97,6 +108,7 @@ function shock_wave1D_up()
     for i = 1:nt
         #c = sqrt(K / maximum(ρ))                # speed of sound
         #@show c
+        ρ_old .= ρ
 
         Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx)
         ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
@@ -105,10 +117,11 @@ function shock_wave1D_up()
         P .= (γ .- 1.0) .* (E .- 0.5 .* ρ.* av_x(Vx).^2)
 
         ρ_v = extend_vertices(av_x(ρ))
+        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (av_x(ρ) .- av_x(ρ_old))
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx)
-        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt
+        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt
 
         VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
         PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
@@ -120,24 +133,30 @@ function shock_wave1D_up()
 
         t += dt
         if i % divisor == 0
-            #fig2 = Figure(size=(1000, 800))
-            #ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=2))")#, limits=(nothing, nothing, -0.25, 0.25))
-            #ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
-            #ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            #ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            fig2 = Figure(size=(1000, 800))
+            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=2))")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             lines!(ax3, xc_vec, e)
             lines!(ax4, xc_vec, ρ)
+            
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
-            display(fig)
+            display(fig2)
         end
     end
+    opts = (;linewidth = 2, color = :red)
+    lines!(ax4, xc, values.ρ; opts...)
+    lines!(ax2, xc, values.u; opts...)
+    lines!(ax1, xc, values.p; opts...)
+    lines!(ax3, xc, e_anal; opts...)
     #@infiltrate
     # +dt*divisor
-    Legend(fig[3,:,Top()], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    rowsize!(fig.layout, 3, 40)
-    #save("../Plots/Navier-Stokes_shock_wave/all_terms_upwind_sod_shock_setup/All_in_one.png", fig)
+    #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    #rowsize!(fig.layout, 3, 40)
+    #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_shock_wave\\all_terms_upwind_sod_shock_setup\\Acoustic_upwind_vs_analytical.png", fig)
     display(fig)
 end

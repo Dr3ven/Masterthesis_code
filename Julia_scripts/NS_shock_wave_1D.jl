@@ -18,12 +18,12 @@ function shock_wave1D()
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 200#400000 
+    divisor = 280#400000 
 
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 960#2000000                             # number of time steps
+    nt = 14000#2000000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -31,11 +31,13 @@ function shock_wave1D()
 
     # Allocations
     ρ = ones(nx) #.* ρ0
+    ρ_old = zeros(nx)
     P = ones(nx) #.* P0
     Vx = zeros(nx + 1)
     E = zeros(nx)
     Vxdρdx = zeros(nx - 2)
     ρdVxdt = zeros(nx - 2)
+    Vxdρdt = zeros(nx - 1)
     ρdPdx = zeros(nx - 1)
     ρVxdVxdx = zeros(nx - 1)
     VxdρVxdx = zeros(nx - 1)
@@ -48,8 +50,8 @@ function shock_wave1D()
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
     #P[1:Int((48/100)*nx)] .= P0 .+ A
     #ρ[1:Int((48/100)*nx)] .= ρ0 .+ A
-    P[Int((49/100)*nx):end] .= 0.1
-    ρ[Int((49/100)*nx):end] .= 0.125
+    P[Int((50/100)*nx):end] .= 0.1
+    ρ[Int((50/100)*nx):end] .= 0.125
     c = sqrt(K / ρ0)                # speed of sound
     E .= P./((γ - 1.0)) + 0.5.*av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
@@ -75,11 +77,12 @@ function shock_wave1D()
     lines!(ax3, xc_vec, e)
     lines!(ax4, xc_vec, ρ)
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
-    display(fig)
+    #display(fig)
 
     for i = 1:nt
         #c = sqrt(K / maximum(ρ))                # speed of sound
         #@show c
+        ρ_old .= ρ
 
         Vxdρdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(ρ), dims=1) ./ dx
         ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
@@ -87,10 +90,11 @@ function shock_wave1D()
 
         P .= (γ .- 1.0) .* (E .- 0.5 .* ρ.* av_x(Vx).^2) #c.^2.0 .* ρ
 
+        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (av_x(ρ) .- av_x(ρ_old))
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* diff(ρ .* av_x(Vx), dims=1) ./ dx
-        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt
+        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt 
 
         VxdPdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(P), dims=1) ./ dx
         PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
