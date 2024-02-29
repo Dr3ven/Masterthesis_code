@@ -36,6 +36,7 @@ function ac_wave1D()
     ρdPdx = zeros(nx - 1)
     ρVxdVxdx = zeros(nx - 1)
     VxdρVxdx = zeros(nx - 1)
+    e = zeros(nx)
 
     # Initial conditions
     P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
@@ -52,12 +53,18 @@ function ac_wave1D()
     linplots = []
 
     # Initial plotting
-    fig = Figure(size=(600, 800))
-    ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
-    ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    l0 = lines!(ax1, xc_vec, P)
+    fig = Figure(size=(1000, 800))
+    #ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
+    #ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    ax1 = Axis(fig[1,1], title="Density, time = $t")
+    ax2 = Axis(fig[1,2], title="Velocity")
+    ax3 = Axis(fig[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+    ax4 = Axis(fig[2,2], title="Energy")
+    l0 = lines!(ax1, xc_vec, ρ)
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
+    lines!(ax3, xc_vec, P)
+    lines!(ax4, xc_vec, e)
     #save("../Plots/Navier-Stokes_acoustic_wave/with_advection_more_realistic_params/$(0).png", fig)
     display(fig)
 
@@ -78,17 +85,26 @@ function ac_wave1D()
 
         t += dt
         if i % divisor == 0
-            #fig2 = Figure(size=(600, 800))
+            fig2 = Figure(size=(1000, 800))
             #ax1 = Axis(fig2[1,1], title="Pressure, time = $t")#, limits=(nothing, nothing, -0.25, 0.25))
             #ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
-            li = lines!(ax1, xc_vec, P, label="time = $t")
-            push!(linplots, li)
-            lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
+            #li = lines!(ax1, xc_vec, P, label="time = $t")
+            #push!(linplots, li)
+            ax1 = Axis(fig2[1,1], title="Density, time = $t")
+            ax2 = Axis(fig2[1,2], title="Velocity")
+            ax3 = Axis(fig2[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+            ax4 = Axis(fig2[2,2], title="Energy")
+            l0 = lines!(ax1, xc_vec, ρ)
+            push!(linplots, l0)
+            lines!(ax2, xv_vec, Vx)
+            lines!(ax3, xc_vec, P)
+            lines!(ax4, xc_vec, e)
+            #lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             #save("../Plots/Navier-Stokes_acoustic_wave/with_advection_more_realistic_params/$(i).png", fig2)
-            display(fig)
+            display(fig2)
         end
     end
-    Legend(fig[2,1], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
+    #Legend(fig[3,:], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
     #save("../Plots/Navier-Stokes_acoustic_wave/with_realistic_parameterss/All_in_one.png", fig)
-    display(fig)
+    #display(fig)
 end
