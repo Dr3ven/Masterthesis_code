@@ -16,19 +16,18 @@ Compute the flux using a 1D upwind scheme
 """
 function flux_upwind(u, G, dx)
     G_p = (G[2:end-1] .- G[1:end-2])./dx
-    G_m = (G[2:end-1] .+ G[3:end])./dx
-    Gflux = sign.(u[2:end-1]).*(G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
+    G_m = (G[3:end] .- G[2:end-1])./dx
+    Gflux = #=sign.(u[2:end-1]).*=#(G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
 
     return Gflux
 end
 
 # attempt to do upwind in staggered formulation
 function flux_upwind_center(u, G, dx)
-    
     G_p = (G[2:end-1] .- G[1:end-2])./dx
-    G_m = (G[2:end-1] .+ G[3:end])./dx
+    G_m = (G[3:end] .- G[2:end-1])./dx
     u_c = average(u)
-    Gflux = sign.(u_c[2:end-1]).*(G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
+    Gflux = #=sign.(u_c[2:end-1]).*=#(G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
 
     return Gflux
 end
@@ -40,7 +39,7 @@ function wave_b(; wave=true)
     Nt = 100000; #1400           # Number of time steps
     dx = L / (Nx - 1)   # Spatial grid spacing
     dt = 1e-8           # Temporal grid spacing
-    σ = Lx * 0.04
+    σ = L * 0.04
     A = 10.0
 
     # Initial conditions
@@ -64,7 +63,7 @@ function wave_b(; wave=true)
         ρ[x_c .> 0.5] .= 0.125
         P[x_c .> 0.5] .= 0.1
     else 
-        P .= P0 .+ A .*exp.(.- 0.01 .* ((x_c .- 0.5*L) ./ σ).^2.0)        # initial pressure distribution
+        P .= P0 .+ A .*exp.(.-1.0 .* ((x_c .- 0.5*L) ./ σ).^2.0)        # initial pressure distribution
         ρ .= P./c.^2.0  
     end
 
@@ -88,32 +87,29 @@ function wave_b(; wave=true)
         # update ρu (momentum) using the momentum equation:
         # This is formulated around the vertices of the control volume  
 
-        #if wave == false
-        #    P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
-        #else
-        #    P .= ρ.*c.^2.0;
-        #end
-
-        # ∂(m)/∂t + ∂(u*m + P)/∂x = 0
-        #P_v = extend_vertices(average(P))
-        m[2:end-1]      .-=   dt .* flux_upwind(u, (m.^2)./ρ_v, dx) .+ (dt./dx) .* (P[2:end] .- P[1:end-1])
-
-
-        # update energy 
-        # ∂e/∂t + ∂/∂x( (ρu/ρ)(E + P) ) = 0
-        E[2:end-1]      .-=  dt .* flux_upwind_center(u, average(u).*(E .+ P), dx)
-
-        # 
-        ρ_v = extend_vertices(average(ρ))
-        u   = m./ρ_v
-        u_c = average(u)
-        
         if wave == false
             P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
         else
             P .= ρ.*c.^2.0;
         end
-        P = ρ
+
+        # ∂(m)/∂t + ∂(u*m + P)/∂x = 0
+        #P_v = extend_vertices(average(P))
+        m[2:end-1]      .-=   dt .* flux_upwind(u, (m.^2)./ρ_v, dx) .+ (dt./dx) .* diff(P, dims=1)
+
+        # update energy 
+        # ∂e/∂t + ∂/∂x( (ρu/ρ)(E + P) ) = 0
+        E[2:end-1]      .-=  dt .* flux_upwind_center(u, average(u).*(E .+ P), dx)
+        
+        ρ_v = extend_vertices(average(ρ))
+        u   = m./ρ_v
+        u_c = average(u)
+
+        if wave == false
+            P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
+        else
+            P .= ρ.*c.^2.0;
+        end
 
         if mod(n,1) == 0
             c_anal = sqrt.(abs.(γ*P./ρ))     # shouldnt go negative but sometimes does
@@ -133,7 +129,7 @@ function wave_b(; wave=true)
             e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
         end
 
-        if n % 100 == 0
+        if n % 1000 == 0
             fig2 = Figure()
             ax1 = Axis(fig2[1,1], title="Density, time = $t")
             ax2 = Axis(fig2[1,2], title="Velocity")
@@ -142,10 +138,10 @@ function wave_b(; wave=true)
 
             #ylims!(ax, -1.2, 1.2)
             opts = (;linewidth = 2, color = :red)
-            scatter!(ax1, x_c, ρ)
-            scatter!(ax2, x_c, average(u))
-            scatter!(ax3, x_c, P)
-            scatter!(ax4, x_c, e)
+            lines!(ax1, x_c, ρ)
+            lines!(ax2, x_c, average(u))
+            lines!(ax3, x_c, P)
+            lines!(ax4, x_c, e)
             #lines!(ax1, x_c, values.ρ; opts...)
             #lines!(ax2, x_c, values.u; opts...)
             #lines!(ax3, x_c, values.p; opts...)
