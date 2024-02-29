@@ -36,10 +36,11 @@ end
 function sod()
     # Parameters
     L = 1.0             # Length of the domain
-    Nx = 1000           # Number of spatial grid points
-    Nt = 1000; #1400           # Number of time steps
+    Nx = 100           # Number of spatial grid points
+    Nt = 14000; #1400           # Number of time steps
     dx = L / (Nx - 1)   # Spatial grid spacing
     dt = 1e-4           # Temporal grid spacing
+    divisor = 100
    
     # Initial conditions
     ρ0 = 1.0    # Initial density
@@ -54,6 +55,7 @@ function sod()
     ρ   = ones(Nx-1)
     ρ_v = ones(Nx)            # @ vertices
     P   = ones(Nx-1)
+    e   = zeros(Nx-1)
     ρ[x_c .> 0.5] .= 0.125
     P[x_c .> 0.5] .= 0.1
      
@@ -62,6 +64,19 @@ function sod()
     m = [m[1]; m; m[end]]
     E = P./((γ - 1.0)) + 0.5.*average(u).^2
     t = 0
+
+    linplots = []
+
+    fig = Figure()
+    ax1 = Axis(fig[1,1], title="Density, time = $t")
+    ax2 = Axis(fig[1,2], title="Velocity")
+    ax3 = Axis(fig[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+    ax4 = Axis(fig[2,2], title="Energy")
+    l0 = lines!(ax1, x_c, ρ)
+    lines!(ax2, x_c, average(u))
+    lines!(ax3, x_c, P)
+    lines!(ax4, x_c, e)
+    push!(linplots, l0)
 
     # Time-stepping loop
     for n in 1:Nt
@@ -106,7 +121,7 @@ function sod()
             #e = (E .- 0.5*ρ.*u.^2)
             
             
-            e = P./(γ-1)./ρ
+            e .= P./(γ-1)./ρ
             e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
 
             #h = plot(   plot(x_c, [ρ, values.ρ], seriestype=[:scatter :line], title="t = $(n*dt)", xlabel="x", ylabel="ρ"),
@@ -117,28 +132,31 @@ function sod()
             #display(h)
         end
 
-        if n % 100 == 0
-            fig2 = Figure()
-            ax1 = Axis(fig2[1,1], title="Density, time = $t")
-            ax2 = Axis(fig2[1,2], title="Velocity")
-            ax3 = Axis(fig2[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
-            ax4 = Axis(fig2[2,2], title="Energy")
-
+        if n % divisor == 0
             #ylims!(ax, -1.2, 1.2)
+            fig = Figure()
+            ax1 = Axis(fig[1,1], title="Density, time = $t")
+            ax2 = Axis(fig[1,2], title="Velocity")
+            ax3 = Axis(fig[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+            ax4 = Axis(fig[2,2], title="Energy")
             opts = (;linewidth = 2, color = :red)
-            scatter!(ax1, x_c, ρ)
+            li = lines!(ax1, x_c, ρ)
             scatter!(ax2, x_c, average(u))
             scatter!(ax3, x_c, P)
             scatter!(ax4, x_c, e)
+            push!(linplots, li)
             #lines!(ax1, x_c, values.ρ; opts...)
             #lines!(ax2, x_c, values.u; opts...)
             #lines!(ax3, x_c, values.p; opts...)
             #lines!(ax4, x_c, e_anal; opts...)
-            display(fig2)
+            display(fig)
         end
     end
-
-   return ρ, u, P, E
+    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*Nt, digits=5)), "Total time", tellwidth = false, nbanks=Int(floor((Nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    rowsize!(fig.layout, 3, 40)
+    #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Sod_shock_tube\\All_in_one.png", fig)
+    display(fig)
+    return ρ, u, P, E
 end
 
-ρ_b, u_b, P_b, E_b = sod()
+#ρ_b, u_b, P_b, E_b = sod()
