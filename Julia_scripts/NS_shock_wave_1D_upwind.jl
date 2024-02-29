@@ -1,5 +1,5 @@
 using CairoMakie
-using Infiltrator
+using SodShockTube
 
 function av_x(B)
     A = 0.5 .* (B[2:end,:] .+ B[1:end-1,:])
@@ -7,8 +7,7 @@ end
 
 function upwind(u, G, dx)
     G_p = (G[2:end-1] .- G[1:end-2])./dx
-    G_m = (G[3:end] .- G[2:end-1])./dx
-    #@infiltrate
+    G_m = (G[2:end-1] .+ G[3:end])./dx
     Gflux = (G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
 
     return Gflux
@@ -16,7 +15,7 @@ end
 
 function upwind_center(u, G, dx)
     G_p = (G[2:end-1] .- G[1:end-2])./dx
-    G_m = (G[3:end] .- G[2:end-1])./dx
+    G_m = (G[2:end-1] .+ G[3:end])./dx
     u_c = av_x(u)
     Gflux = (G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
 
@@ -41,7 +40,7 @@ function shock_wave1D_up()
     divisor = 280 
 
     # Numerics
-    nx = 200                             # number of nodes in x
+    nx = 1000                             # number of nodes in x
     dx = Lx / nx                        # step size in x
     nt = 1400                             # number of time steps
 
@@ -54,6 +53,8 @@ function shock_wave1D_up()
     ρ_old = zeros(nx)
     P = ones(nx) .* P0
     Vx = zeros(nx + 1)
+    Vx_old = zeros(nx + 1)
+    Mx = zeros(nx + 1)
     E = zeros(nx)
     Vxdρdx = zeros(nx - 2)
     ρdVxdt = zeros(nx - 2)
@@ -71,7 +72,7 @@ function shock_wave1D_up()
     P[Int((50/100)*nx):end] .= 0.1
     ρ[Int((50/100)*nx):end] .= 0.125
     c = sqrt(K / ρ0)                # speed of sound
-    E .= P./((γ - 1.0)) + 0.5.*av_x(Vx).^2
+    E .= P./((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
 
     dt = 1.0e-4#8 #dx / (c * 4.0)                      # time step size
@@ -103,41 +104,46 @@ function shock_wave1D_up()
     lines!(ax3, xc_vec, e)
     lines!(ax4, xc_vec, ρ)
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
-    display(fig)
+    #display(fig)
 
     for i = 1:nt
-        #c = sqrt(K / maximum(ρ))                # speed of sound
-        #@show c
         ρ_old .= ρ
-
+        Vx_old .= Vx
+        
         Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx)
-        ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
+        ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx # hier
         ρ[2:end-1] .= ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
 
         P .= (γ .- 1.0) .* (E .- 0.5 .* ρ.* av_x(Vx).^2)
 
+        dρ = av_x(ρ .- ρ_old)
         ρ_v = extend_vertices(av_x(ρ))
-        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (av_x(ρ) .- av_x(ρ_old))
+        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (dρ ./ dt)
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
-        ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
+        ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx # hier
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx)
-        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt
-
-        VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
+        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt .* dt
+        
+        VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx) # hier
         PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
         VxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
         EdVxdx .= .-E[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
         E[2:end-1] .= E[2:end-1] .+ VxdPdx .* dt .+ PdVxdx .* dt .+ VxdEdx .* dt .+ EdVxdx .* dt
-
+        
         e = P ./ (γ - 1.0) ./ ρ
 
         t += dt
         if i % divisor == 0
             fig2 = Figure(size=(1000, 800))
-            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=2))")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            opts = (;linewidth = 2, color = :red)
+            lines!(ax4, xc, values.ρ; opts...)
+            lines!(ax2, xc, values.u; opts...)
+            lines!(ax1, xc, values.p; opts...)
+            lines!(ax3, xc, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
@@ -145,18 +151,15 @@ function shock_wave1D_up()
             lines!(ax4, xc_vec, ρ)
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
-            display(fig2)
+            #display(fig2)
+            if i % nt == 0
+                Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+                rowsize!(fig2.layout, 3, 40)
+                #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_shock_wave\\nonconservative\\Shock_upwind_vs_analytical.png", fig)
+                display(fig2)
+            end
         end
+        
     end
-    opts = (;linewidth = 2, color = :red)
-    lines!(ax4, xc, values.ρ; opts...)
-    lines!(ax2, xc, values.u; opts...)
-    lines!(ax1, xc, values.p; opts...)
-    lines!(ax3, xc, e_anal; opts...)
-    #@infiltrate
-    # +dt*divisor
-    #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    #rowsize!(fig.layout, 3, 40)
-    #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_shock_wave\\all_terms_upwind_sod_shock_setup\\Acoustic_upwind_vs_analytical.png", fig)
-    display(fig)
+    
 end
