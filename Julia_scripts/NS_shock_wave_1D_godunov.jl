@@ -76,44 +76,8 @@ function riemann_solver_hllc(nx, γ, ρL, uL, EL, ρR, uR, ER, fρ, fρL, fρR, 
     return fρ, fu, fE
 end
 
-function godunov_method(nx, γ, u, f)
-    # Initialize left and right states and fluxes
-    uL = zeros(nx+1, 3)
-    uR = zeros(nx+1, 3)
-    fL = zeros(nx+1, 3)
-    fR = zeros(nx+1, 3)
-
-    # Main loop
-    for t in 0:dt:T
-        # Compute left and right states and fluxes
-        for i in 1:nx+1
-            uL[i, :] = u[i, :]
-            uR[i, :] = u[i+1, :]
-            fL[i, :] = f(uL[i, :])
-            fR[i, :] = f(uR[i, :])
-        end
-
-        # Call HLLC Riemann solver
-        riemann_solver_hllc(nx, γ, uL, uR, f, fL, fR)
-
-        # Update solution
-        for i in 2:nx
-            u[i, :] = u[i, :] - dt/dx * (f[i+1, :] - f[i, :])
-        end
-    end
-
-    return u
-end
-# taken quantities from center nodes to compute flux for face nodes
-function godunov_flux_faces(u, dx)
-    f = (u[1:end-1] .- u[2:end]) ./ dx
-    return f
-end
-
-# taken quantities from face nodes to compute flux for center nodes
-function godunov_flux_center(u, dx)
-    f = (u[2:end-2] .- u[3:end-1]) ./ dx
-    return f
+function godunov_flux_bar(u, F, dt, dx)
+    u_n = 0.5 .* (u[2:end] .+ u[1:end-1]) .- (dt ./ dx) .* (F[2:end] .- F[1:end-1])
 end
 
 extend_vertices(x) = [x[1]; x; x[end]];
@@ -144,23 +108,24 @@ function shock_wave1D_god()
     xv = - Lx       / 2:dx: Lx       / 2        # grid vertices in x-direction
 
     # Allocations
-    ρ = ones(nx) .* ρ0
-    ρ_old = zeros(nx)
-    P = ones(nx) .* P0
-    Vx = zeros(nx + 1)
-    Vx_old = zeros(nx + 1)
-    Mx = zeros(nx + 1)
-    E = zeros(nx)
-    Vxdρdx = zeros(nx - 1)
-    ρdVxdt = zeros(nx - 1)
-    Vxdρdt = zeros(nx - 1)
-    ρdPdx = zeros(nx - 1)
-    ρVxdVxdx = zeros(nx)
-    VxdρVxdx = zeros(nx)
-    VxdPdx = zeros(nx - 1)
-    PdVxdx = zeros(nx - 1)
-    VxdEdx = zeros(nx - 1)
-    EdVxdx = zeros(nx - 1)
+    ρ = ones(nx + 2) .* ρ0
+    ρ_old = zeros(nx + 2)
+    P = ones(nx + 2) .* P0
+    Vx = zeros(nx + 3)
+    Vx_old = zeros(nx + 3)
+    Mx = zeros(nx + 3)
+    Mx_old = zeros(nx + 3)
+    E = zeros(nx + 2)
+    Vxdρdx = zeros(nx+1)
+    ρdVxdt = zeros(nx+1)
+    Vxdρdt = zeros(nx+2)
+    ρdPdx  = zeros(nx+2)
+    ρVxdVxdx = zeros(nx+2)
+    VxdρVxdx = zeros(nx+2)
+    VxdPdx = zeros(nx + 1)
+    PdVxdx = zeros(nx + 1)
+    VxdEdx = zeros(nx + 1)
+    EdVxdx = zeros(nx + 1)
 
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
@@ -169,6 +134,7 @@ function shock_wave1D_god()
     c = sqrt(K / ρ0)                # speed of sound
     E .= P./((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
+    Mx[2:end-1] .= av_x(ρ) .* Vx[2:end-1]
 
     dt = 1.0e-4#8 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
@@ -193,39 +159,85 @@ function shock_wave1D_god()
     ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     ax3 = Axis(fig[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    l0 = lines!(ax1, xc_vec, P, label="time = 0")
+    l0 = lines!(ax1, xc_vec, P[2:end-1], label="time = 0")
     push!(linplots, l0)
-    lines!(ax2, xv_vec, Vx)
-    lines!(ax3, xc_vec, e)
-    lines!(ax4, xc_vec, ρ)
+    lines!(ax2, xv_vec, Vx[2:end-1])
+    lines!(ax3, xc_vec, e[2:end-1])
+    lines!(ax4, xc_vec, ρ[2:end-1])
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
     #display(fig)
 
     for i = 1:nt
         ρ_old .= ρ
+        Mx_old .= Mx
         Vx_old .= Vx
         
-        Vxdρdx .= .-Vx[2:end-1] .* godunov_flux_faces(ρ, dx)
-        ρdVxdt .= .-av_x(ρ) .* godunov_flux_faces(av_x(Vx), dx)
-        ρ[2:end-1] .= ρ[2:end-1] .+ ((Vxdρdx[1:end-1] .+ ρdVxdt[1:end-1]) .- (Vxdρdx[2:end] .+ ρdVxdt[2:end])) .* dt
+        # Fluxes F
+        Vxdρdx .= .-Vx[2:end-1] .* diff(ρ, dims=1) ./ dx
+        ρdVxdt .= .-av_x(ρ) .* diff(av_x(Vx), dims=1) ./ dx
+        # Difference of fluxes F
+        Fρ_p = (Vxdρdx[3:end] .+ ρdVxdt[3:end]) .- (Vxdρdx[2:end-1] .+ ρdVxdt[2:end-1])
+        Fρ_m = (Vxdρdx[2:end-1] .+ ρdVxdt[2:end-1]) .- (Vxdρdx[1:end-2] .+ ρdVxdt[1:end-2])
+        # Fluxes F_bar
+        Fρ_bar_p = godunov_flux_bar(av_x(ρ[2:end-1]), Fρ_p, dt, dx)
+        Fρ_bar_m = godunov_flux_bar(av_x(ρ[2:end-1]), Fρ_m, dt, dx)
+        # Update ρ
+        ρ[3:end-2] .= ρ[3:end-2] .- (dt ./ dx) .* (Fρ_bar_p .- Fρ_bar_m)
 
         P .= (γ .- 1.0) .* (E .- 0.5 .* ρ.* av_x(Vx).^2)
 
-        dρ = av_x(ρ .- ρ_old)
-        ρ_v = extend_vertices(av_x(ρ))
-        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (dρ ./ dt)
-        ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
-        ρVxdVxdx .= .-(1.0 ./ ρ) .* (ρ .* av_x(Vx)) .* godunov_flux_faces(Vx, dx)
-        VxdρVxdx .= .-(1.0 ./ ρ) .* av_x(Vx) .* godunov_flux_faces(ρ_v .* Vx, dx)
-        Vx[2:end-1] .= Vx[2:end-1] .+ ((ρVxdVxdx[1:end-1] .+ VxdρVxdx[1:end-1]) .- (ρVxdVxdx[2:end] .+ VxdρVxdx[2:end])) .* dt .+ ρdPdx .* dt .+ Vxdρdt .* dt
-        
-        VxdPdx .= .-Vx[2:end-1] .* godunov_flux_faces(P, dx) # hier
-        PdVxdx .= .-av_x(P) .* godunov_flux_faces(av_x(Vx), dx)
-        VxdEdx .= .-Vx[2:end-1] .* godunov_flux_faces(E, dx)
-        EdVxdx .= .-av_x(E) .* godunov_flux_faces(av_x(Vx), dx)
-        E[2:end-1] .= E[2:end-1] .+ ((VxdPdx[1:end-1] .+ PdVxdx[1:end-1] .+ VxdEdx[1:end-1] .+ EdVxdx[1:end-1]) .- (VxdPdx[2:end] .+ PdVxdx[2:end] .+ VxdEdx[2:end] .+ EdVxdx[2:end])) .* dt
+        ## Velocity formulation
+        # # Prerequisites
+        # dρ = (ρ .- ρ_old)
+        # ρ_v = extend_vertices(av_x(ρ))
+        # P_v = extend_vertices(av_x(P))
+        # # Fluxes F
+        # Vxdρdt .= .-(1.0 ./ ρ) .* av_x(Vx) .* (dρ ./ dt)
+        # ρdPdx .= .-(1.0 ./ ρ) .* diff(P_v, dims=1) ./ dx
+        # ρVxdVxdx .= .-(1.0 ./ ρ) .* (ρ .* av_x(Vx)) .* diff(Vx, dims=1) ./ dx
+        # VxdρVxdx .= .-(1.0 ./ ρ) .* av_x(Vx) .* diff(ρ_v .* Vx, dims=1) ./ dx
+        # # Difference of fluxes F
+        # FVx_p = (Vxdρdt[3:end] .+ ρdPdx[3:end] .+ ρVxdVxdx[3:end] .+ VxdρVxdx[3:end]) .- (Vxdρdt[2:end-1] .+ ρdPdx[2:end-1] .+ ρVxdVxdx[2:end-1] .+ VxdρVxdx[2:end-1])
+        # FVx_m = (Vxdρdt[2:end-1] .+ ρdPdx[2:end-1] .+ ρVxdVxdx[2:end-1] .+ VxdρVxdx[2:end-1]) .- (Vxdρdt[1:end-2] .+ ρdPdx[1:end-2] .+ ρVxdVxdx[1:end-2] .+ VxdρVxdx[1:end-2])
+        # # Fluxes F_bar
+        # FVx_bar_p = godunov_flux_bar(av_x(Vx[2:end-1]), FVx_p, dt, dx)
+        # FVx_bar_m = godunov_flux_bar(av_x(Vx[2:end-1]), FVx_m, dt, dx)
+        # # Update Vx
+        # Vx[3:end-2] .= Vx[3:end-2] .- (dt ./ dx) .* (FVx_bar_p .- FVx_bar_m)
 
-        #ρ, Vx, E = godunov(Vx, ρ, P, E, γ, β, dt, dx)
+        ## Momentum formulation
+        # Prerequisites
+        ρ_v = extend_vertices(av_x(ρ))
+        P_v = extend_vertices(av_x(P))
+        # Fluxes F
+        ρdPdx .= .-diff(P_v, dims=1) ./ dx
+        ρVxdVxdx .= .-av_x(Mx) .* diff(Vx, dims=1) ./ dx
+        VxdρVxdx .= .-av_x(Vx) .* diff(Mx, dims=1) ./ dx
+        # Difference of fluxes F
+        FMx_p = (ρdPdx[3:end] .+ ρVxdVxdx[3:end] .+ VxdρVxdx[3:end]) .- (ρdPdx[2:end-1] .+ ρVxdVxdx[2:end-1] .+ VxdρVxdx[2:end-1])
+        FMx_m = (ρdPdx[2:end-1] .+ ρVxdVxdx[2:end-1] .+ VxdρVxdx[2:end-1]) .- (ρdPdx[1:end-2] .+ ρVxdVxdx[1:end-2] .+ VxdρVxdx[1:end-2])
+        # Fluxes F_bar
+        FMx_bar_p = godunov_flux_bar(av_x(Mx[2:end-1]), FMx_p, dt, dx)
+        FMx_bar_m = godunov_flux_bar(av_x(Mx[2:end-1]), FMx_m, dt, dx)
+        # Update Mx and Vx
+        Mx[3:end-2] .= Mx[3:end-2] .- (dt ./ dx) .* (FMx_bar_p .- FMx_bar_m)
+        Vx[2:end-1] .= Mx[2:end-1] ./ av_x(ρ)
+        
+        # Fluxes F
+        VxdPdx .= .-Vx[2:end-1] .* diff(P, dims=1) ./ dx
+        PdVxdx .= .-av_x(P) .* diff(av_x(Vx), dims=1) ./ dx
+        VxdEdx .= .-Vx[2:end-1] .* diff(E, dims=1) ./ dx
+        EdVxdx .= .-av_x(E) .* diff(av_x(Vx), dims=1) ./ dx
+        # Difference of fluxes F
+        FE_p = (VxdPdx[3:end] .+ PdVxdx[3:end] .+ VxdEdx[3:end] .+ EdVxdx[3:end]) .- (VxdPdx[2:end-1] .+ PdVxdx[2:end-1] .+ VxdEdx[2:end-1] .+ EdVxdx[2:end-1])
+        FE_m = (VxdPdx[2:end-1] .+ PdVxdx[2:end-1] .+ VxdEdx[2:end-1] .+ EdVxdx[2:end-1]) .- (VxdPdx[1:end-2] .+ PdVxdx[1:end-2] .+ VxdEdx[1:end-2] .+ EdVxdx[1:end-2])
+        # Fluxes F_bar
+        FE_bar_p = godunov_flux_bar(av_x(E[2:end-1]), FE_p, dt, dx)
+        FE_bar_m = godunov_flux_bar(av_x(E[2:end-1]), FE_m, dt, dx)
+        # Update E
+        E[3:end-2] .= E[3:end-2] .- (dt ./ dx) .* (FE_bar_p .- FE_bar_m)
+
+        # Update e (internal energy)
         e .= P ./ (γ - 1.0) ./ ρ
 
         t += dt
@@ -240,11 +252,11 @@ function shock_wave1D_god()
             lines!(ax2, xc, values.u; opts...)
             lines!(ax1, xc, values.p; opts...)
             lines!(ax3, xc, e_anal; opts...)
-            li = lines!(ax1, xc_vec, P, label="time = $t")
+            li = lines!(ax1, xc_vec, P[2:end-1], label="time = $t")
             push!(linplots, li)
-            lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
-            lines!(ax3, xc_vec, e)
-            lines!(ax4, xc_vec, ρ)
+            lines!(ax2, xv_vec, Vx[2:end-1])
+            lines!(ax3, xc_vec, e[2:end-1])
+            lines!(ax4, xc_vec, ρ[2:end-1])
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             display(fig2)
