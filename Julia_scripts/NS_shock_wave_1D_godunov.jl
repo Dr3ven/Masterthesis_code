@@ -23,54 +23,100 @@ function upwind_center(u, G, dx)
     return Gflux
 end
 
-function riemann_solver_hllc(nx, γ, ρL, uL, EL, ρR, uR, ER, fρ, fρL, fρR, fu, fuL, fuR, fE, fEL, fER)
+function riemann_solver_hllc(nx, γ, ρLi, uLi, ELi, ρRi, uRi, ERi, fρ, fρL, fρR, fu, fuL, fuR, fE, fEL, fER)
+    nx = length(ρL) + 1
     gm = γ - 1.0
     Ds = Array{Float64}(undef, 3)
     Ds[1], Ds[2] = 0.0, 1.0
 
-    for i in 1:nx+1
+    for i in 1:nx, j in 1:nx+1
         #left scatter
-        rhLL = ρL[i]
-        uuLL = uL[i]
-        eeLL = EL[i]
+        ρL = ρLi[i]
+        uL = uLi[j]
+        EL = ELi[i]
         pL = gm * (EL - 0.5 * ρL * uL^2)
         aL = sqrt(abs(γ*pL/ρL))
 
         # right scatter
-        rhRR = ρR[i]
-        uuRR = uR[i]
-        eeRR = ER[i]
+        ρR = ρR[i+1]
+        uR = uR[j+1]
+        ER = ER[i+1]
         pR = gm * (ER - 0.5 * ρR * uR^2)
         aR = sqrt(abs(γ*pR/ρR))
         
+        # middle regions
+        aS = (1.0 / 2.0) * (aL + aR) + (1.0 / 4.0) * gm * (uR - uL)
+        pS = (1.0 / 2.0) * (pL + pR) - (1.0 / 2.0) * (uR - uL) * ((1.0 / 2.0) * (ρL + ρR) * (aL + aR))
+        uS = (1.0 / 2.0) * (uL + uR) - (1.0 / 2.0) * (pL - pR) / ((1.0 / 2.0) * (ρL + ρR) * (aL + aR)) # eq. 12 HLLC paper
+        # uS = (1.0 / 2.0) * (uL + uR) + ((aL - aR) / gm) # eq. 10 HLLC paper
+        ρSL = ρL + (uL - uS) * ((1.0 / 2.0) * (ρL + ρR)) / ((1.0 / 2.0) * (aL + aR))
+        ρSR = ρR + (uS - uR) * ((1.0 / 2.0) * (ρL + ρR)) / ((1.0 / 2.0) * (aL + aR))
+
+        # compute pressure ratios
+        HSL = pS / pL
+        HSR = pS / pR
+
+        # compute qL and qR
+        qL = HSL <= 1 ? 1 : sqrt(1 + (γ + 1) / (2 * γ) * (HSL - 1))
+        qR = HSR <= 1 ? 1 : sqrt(1 + (γ + 1) / (2 * γ) * (HSR - 1))
+
         # compute SL and sR
-        SL = min(uL, uR) - max(aL, aR)
-        SR = max(uL, uR) + max(aL, aR)
+        #SL = min(uL, uR) - max(aL, aR)
+        SL = uL - aL * qL 
+        #SR = max(uL, uR) + max(aL, aR)
+        SR = uR - aR * qR
 
         # compute compound speed
-        SP = (pR - pL + ρL*uL*(SL - uL) - ρR*uR*(SR - uR)) / (ρL*(SL - uL) - ρR*(SR - uR))
+        SM = (pR - pL + ρL*uL*(SL - uL) - ρR*uR*(SR - uR)) / (ρL*(SL - uL) - ρR*(SR - uR))
 
-        # compute compound pressure
-        PLR = 0.5 * (pL + pR + ρL * (SL - uL) * (SP - uL) + ρR * (SR - uR) * (SP - uR))
+        # compute q1, q2, q3, q4, q5, q6
+        q1 = SL * ρSL - ρSL * uS 
+        q2 = SL * ρL * uS - ρL * uS^2 + pL
+        q3 = SL * EL - uS * (EL + pL)
 
-        Ds[3] = SP
+        q4 = SR * ρSR - ρSR * uS
+        q5 = SR * ρSR * uS - ρSR * uS^2 + pR
+        q6 = SR * ER - uS * (ER + pR)
 
+        # use the q1-6 and SL, SM, SR to compute Uk
+        ρSL = q1 / (SL - SM)
+        pSL = SM * q1 - q2
+        ESL = q3 + SM * pSL / (SL - SM)
+        
+        ρSR = q4 / (SR - SM)
+        pSR = SM * q4 - q5
+        ESR = q6 + SM * pSR / (SR - SM)
+
+        # Fk is given as input parameters of this function (see fρL, fρR, fuL, fuR, fEL, fER)
+        # use FSL = FL + SL * (USL - UL) and FSR = FR + SR * (USR - UR) to compute fluxes -> those are Fi+1/2 then!
+        FρSL = fρL[i] + SL * (ρL - ρSL)
+        FuSL = fuL[i] + SR * (ρR - ρSR)
+        FESL = fEL[i] + SL * (EL - ESL)
+
+        FρSR = fρR[i] + SR * (ρR - ρSR)
+        FuSR = fuR[i] + SR * (ρR - ρSR)
+        FESR = fER[i] + SR * (ER - ESR)
+
+        # right supersonic flow
         if SL >= 0.0
             fρ[i] = fρL[i]
             fu[i] = fuL[i]
             fE[i] = fEL[i]
+        # left supersonic flow
         elseif SR <= 0.0
             fρ[i] = fρR[i]
             fu[i] = fuR[i]
             fE[i] = fER[i]
-        elseif (SP >= 0.0) & (SL <= 0.0)
-            fρ[i] = (SP * (SL*ρL[i] - fρL[i]) + SL * PLR * Ds[1]) / (SL - SP)
-            fu[i] = (SP * (SL*uL[i] - fuL[i]) + SL * PLR * Ds[2]) / (SL - SP)
-            fE[i] = (SP * (SL*EL[i] - fEL[i]) + SL * PLR * Ds[3]) / (SL - SP)
-        elseif (SP <= 0.0) & (SR >= 0.0)
-            fρ[i] = (SP * (SR*ρR[i] - fρR[i]) + SR * PLR * Ds[1]) / (SR - SP)
-            fu[i] = (SP * (SR*uR[i] - fuR[i]) + SR * PLR * Ds[2]) / (SR - SP)
-            fE[i] = (SP * (SR*ER[i] - fER[i]) + SR * PLR * Ds[3]) / (SR - SP)
+        # subsonic flow
+        elseif (SM >= 0.0) & (SL <= 0.0)
+            fρ[i] = FρSL
+            fu[i] = FuSL
+            fE[i] = FESL
+        # what flow is this?
+        elseif (SM <= 0.0) & (SR >= 0.0)
+            fρ[i] = FρSR
+            fu[i] = FuSR
+            fE[i] = FESR
         end
     end
     return fρ, fu, fE
@@ -127,6 +173,10 @@ function shock_wave1D_god()
     VxdEdx = zeros(nx + 1)
     EdVxdx = zeros(nx + 1)
 
+    fρ  = zeros(nx+1)
+    fMx = zeros(nx+2)
+    fE  = zeros(nx+1)
+
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
     P[Int((50/100)*nx):end] .= 0.1
@@ -176,8 +226,8 @@ function shock_wave1D_god()
         Vxdρdx .= .-Vx[2:end-1] .* diff(ρ, dims=1) ./ dx
         ρdVxdt .= .-av_x(ρ) .* diff(av_x(Vx), dims=1) ./ dx
         # Difference of fluxes F
-        Fρ_p = (Vxdρdx[3:end] .+ ρdVxdt[3:end]) .- (Vxdρdx[2:end-1] .+ ρdVxdt[2:end-1])
-        Fρ_m = (Vxdρdx[2:end-1] .+ ρdVxdt[2:end-1]) .- (Vxdρdx[1:end-2] .+ ρdVxdt[1:end-2])
+        Fρ_p = (ρdVxdt[3:end]) .- (ρdVxdt[2:end-1])
+        Fρ_m = (ρdVxdt[2:end-1]) .- (ρdVxdt[1:end-2])
         # Fluxes F_bar
         Fρ_bar_p = godunov_flux_bar(av_x(ρ[2:end-1]), Fρ_p, dt, dx)
         Fρ_bar_m = godunov_flux_bar(av_x(ρ[2:end-1]), Fρ_m, dt, dx)
