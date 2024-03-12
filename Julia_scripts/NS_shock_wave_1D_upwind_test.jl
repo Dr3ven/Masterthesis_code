@@ -27,23 +27,24 @@ extend_vertices(x) = [x[1]; x; x[end]];
 
 function shock_wave1D_up_test()
     # Physics
-    Lx = 1.0                           # domain
+    Lx = 100.0                           # domain
     γ = 1.4                                # adiabatic index/ratio of specific heats
     K = 1.0e10                             # shear modulus
     ρ0 = 1.0                          # initial density at all points
-    P0 = 1.0#e5                          # initial pressure at all points
+    P0 = 1.0e6                          # initial pressure at all points
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 280 
+    divisor = 1000 
+    plotlegend = false
 
     # Numerics
-    nx = 1000                             # number of nodes in x
+    nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 1400                             # number of time steps
+    nt = 140000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -77,13 +78,13 @@ function shock_wave1D_up_test()
 
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
-    P[Int((50/100)*nx):end] .= 0.1
+    P[Int((50/100)*nx):end] .= 1.0e5
     ρ[Int((50/100)*nx):end] .= 0.125
     c = sqrt(K / ρ0)                # speed of sound
     E .= P./((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
 
-    dt = 1.0e-4#8 #dx / (c * 4.0)                      # time step size
+    dt = 1.0e-6#8 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
     xc_vec = Array(xc)
@@ -124,6 +125,9 @@ function shock_wave1D_up_test()
         ρ[2:end-1] .= ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
         ρ_t_av .= (ρ .+ ρ_old) .* 0.5
         
+        ρ[1] = ρ[2]
+        ρ[end] = ρ[end-1]
+
         # Velocity formulation
         dρ = av_x(ρ .- ρ_old)
         ρ_v = extend_vertices(av_x(ρ))
@@ -133,6 +137,9 @@ function shock_wave1D_up_test()
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx)
         Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt .* dt
         
+        Vx[1] = Vx[2]
+        Vx[end] = Vx[end-1]
+
         # Momentum formulation
         # ρdPdx .= .-diff(P, dims=1) ./ dx
         # ρVxdVxdx .= .-Mx[2:end-1] .* diff(av_x(Vx), dims=1) ./ dx
@@ -141,20 +148,18 @@ function shock_wave1D_up_test()
         # Vx[2:end-1] .= Mx[2:end-1] ./ av_x(ρ)
        
         # Velocity formulation
-        Edρdt  .= 0#.-(1.0 ./ ρ[2:end-1]) .* E[2:end-1] .* ((ρ[2:end-1] .- ρ_old[2:end-1]) ./ dt)
-        EdρVxdx.= .-(1.0 ./ ρ[2:end-1]) .* E[2:end-1] .* diff(av_x(ρ) .* Vx[2:end-1], dims=1) ./ dx
-        VxdPdx .= .-(1.0 ./ ρ[2:end-1]) .* av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
-        PdVxdx .= .-(1.0 ./ ρ[2:end-1]) .* P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        ρVxdEdx .= .-(1.0 ./ ρ[2:end-1]) .* (ρ[2:end-1] .* av_x(Vx[2:end-1])) .* upwind_center(Vx, E, dx)
-        E[2:end-1] .= E[2:end-1] .+ Edρdt .* dt .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
+        EdρVxdx.= .-E[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
+        VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
+        PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
+        ρVxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
+        E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
         # Momentum formulation
-        # Edρdt  .= 0#.-(1.0 ./ ρ[2:end-1]) .* E[2:end-1] .* ((ρ[2:end-1] .- ρ_old[2:end-1]) ./ dt)
-        # EdρVxdx.= .-(1.0 ./ ρ[2:end-1]) .* E[2:end-1] .* upwind_center(Vx, av_x(Mx), dx)# ./ dx
-        # VxdPdx .= .-(1.0 ./ ρ[2:end-1]) .* av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
-        # PdVxdx .= .-(1.0 ./ ρ[2:end-1]) .* P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        # ρVxdEdx .= .-(1.0 ./ ρ[2:end-1]) .* (av_x(Mx[2:end-1])) .* upwind_center(Vx, E, dx)
-        # E[2:end-1] .= E[2:end-1] .+ Edρdt .* dt .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
+        # EdρVxdx.= .-E[2:end-1] .* upwind_center(Vx, av_x(Vx), dx)# ./ dx
+        # VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
+        # PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
+        # ρVxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
+        # E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
         P .= (γ .- 1.0) .* (E .- 0.5 .* ρ .* (av_x(Mx) ./ ρ).^2)
 
@@ -167,20 +172,24 @@ function shock_wave1D_up_test()
             ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
             ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            opts = (;linewidth = 2, color = :red)
-            lines!(ax4, xc, values.ρ; opts...)
-            lines!(ax2, xc, values.u; opts...)
-            lines!(ax1, xc, values.p; opts...)
-            lines!(ax3, xc, e_anal; opts...)
+            # opts = (;linewidth = 2, color = :red)
+            #lines!(ax4, xc, values.ρ; opts...)
+            #lines!(ax2, xc, values.u; opts...)
+            #lines!(ax1, xc, values.p; opts...)
+            #lines!(ax3, xc, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
+            scatter!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
+            scatter!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             lines!(ax3, xc_vec, e)
+            scatter!(ax3, xc_vec, e)
             lines!(ax4, xc_vec, ρ)
+            scatter!(ax4, xc_vec, ρ)
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             display(fig2)
-            if i % nt == 0
+            if i % nt == 0 && plotlegend == true
                 Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
                 rowsize!(fig2.layout, 3, 40)
                 #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_shock_wave\\nonconservative\\Shock_upwind_vs_analytical.png", fig)
