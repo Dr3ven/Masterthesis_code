@@ -27,7 +27,7 @@ extend_vertices(x) = [x[1]; x; x[end]];
 
 function shock_wave1D_up_test()
     # Physics
-    Lx = 100.0                           # domain
+    Lx = 1000.0                           # domain
     γ = 1.4                                # adiabatic index/ratio of specific heats
     K = 1.0e10                             # shear modulus
     ρ0 = 1.0                          # initial density at all points
@@ -93,8 +93,8 @@ function shock_wave1D_up_test()
     # Analytical solution 
     problem = ShockTubeProblem(
                 geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
-                left_state = (ρ = 1.0, u = 0.0, p = 1.0),
-                right_state = (ρ = 0.125, u = 0.0, p = 0.1),
+                left_state = (ρ = 1.0, u = 0.0, p = 1.0e6),
+                right_state = (ρ = 0.125, u = 0.0, p = 1.0e5),
                 t = 0.14, γ = γ)
     positions, regions, values = solve(problem, xc);
     e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
@@ -103,16 +103,16 @@ function shock_wave1D_up_test()
 
     # Initial plotting
     fig = Figure(size=(1000, 800))
-    ax1 = Axis(fig[2,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
-    ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    ax3 = Axis(fig[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    ax1 = Axis(fig[2,1], title="Pressure", ylabel="Pressure", xlabel="Domain", limits=(nothing, nothing, 1.0e5, 1.1e6))
+    ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain", limits=(nothing, nothing, 200.0, 1600.25))
+    ax3 = Axis(fig[2,2], title="Energy", ylabel="Energy", xlabel="Domain", limits=(nothing, nothing, 1.e6, 3.0e6))
+    ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xlabel="Domain", limits=(nothing, nothing, 0.0, 1.1))
     l0 = lines!(ax1, xc_vec, P, label="time = 0")
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
     lines!(ax3, xc_vec, e)
     lines!(ax4, xc_vec, ρ)
-    #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
+    #save("/home/nils/Masterthesis_code/Plots/1D_coupling_upwind/$(0).png", fig)
     display(fig)
 
     for i = 1:nt
@@ -161,22 +161,22 @@ function shock_wave1D_up_test()
         # ρVxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
         # E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
-        P .= (γ .- 1.0) .* (E .- 0.5 .* ρ .* (av_x(Mx) ./ ρ).^2)
+        P .= (γ .- 1.0) .* (E .- 0.5 .* ρ .* av_x(Vx).^2)
 
         e = P ./ (γ - 1.0) ./ ρ
 
         t += dt
         if i % divisor == 0
             fig2 = Figure(size=(1000, 800))
-            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            # opts = (;linewidth = 2, color = :red)
-            #lines!(ax4, xc, values.ρ; opts...)
-            #lines!(ax2, xc, values.u; opts...)
-            #lines!(ax1, xc, values.p; opts...)
-            #lines!(ax3, xc, e_anal; opts...)
+            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=5))", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, 9.0e4, 1.1e6))
+            ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -10.0, 1700.25))
+            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, 1.e6, 4.0e6))
+            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, 0.0, 1.1))
+            opts = (;linewidth = 2, color = :red)
+            lines!(ax4, xc_vec, values.ρ; opts...)
+            lines!(ax2, xc_vec, values.u; opts...)
+            lines!(ax1, xc_vec, values.p; opts...)
+            lines!(ax3, xc_vec, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
             scatter!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
@@ -187,7 +187,7 @@ function shock_wave1D_up_test()
             lines!(ax4, xc_vec, ρ)
             scatter!(ax4, xc_vec, ρ)
             
-            #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
+            #save("/home/nils/Masterthesis_code/Plots/1D_coupling_upwind/$(i).png", fig2)
             display(fig2)
             if i % nt == 0 && plotlegend == true
                 Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)

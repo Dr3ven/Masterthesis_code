@@ -134,11 +134,11 @@ function shock_wave1D_up()
 
         t += dt
         if i % divisor == 0
-            fig2 = Figure(size=(1000, 800))
-            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            #fig2 = Figure(size=(1000, 800))
+            #ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            #ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            #ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            #ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             opts = (;linewidth = 2, color = :red)
             lines!(ax4, xc, values.ρ; opts...)
             lines!(ax2, xc, values.u; opts...)
@@ -153,13 +153,15 @@ function shock_wave1D_up()
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             #display(fig2)
             if i % nt == 0
-                Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-                rowsize!(fig2.layout, 3, 40)
-                #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_shock_wave\\nonconservative\\Shock_upwind_vs_analytical.png", fig)
-                display(fig2)
+                #Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+                #rowsize!(fig2.layout, 3, 40)
+                #save("/home/nils/Masterthesis_code/Plots/Navier-Stokes_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_vs_analytical.png", fig2)
+                #display(fig2)
             end
         end
-        
     end
-    
+    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    rowsize!(fig.layout, 3, 40)
+    #save("/home/nils/Masterthesis_code/Plots/Navier-Stokes_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_time_evolution.png", fig)
+    display(fig)
 end
