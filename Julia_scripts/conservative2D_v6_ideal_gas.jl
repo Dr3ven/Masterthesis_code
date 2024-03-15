@@ -279,7 +279,7 @@ function conservative2D()
             Exx          .= diff(Vx[:,2:end-1],dims=1)./dx .- 1.0./3.0*divV                                                               # strain-rate in x-direction
             Eyy          .= diff(Vy[2:end-1,:],dims=2)./dx .- 1.0./3.0*divV                                                               # strain-rate in y-direction
             Ezz          .=                               - 1/3*divV                                                                      # strain-rate in z-direction
-            Exy          .= 0.5.*(diff(Vy,dims=1)./dx .+ diff(Vx,dims=2)./dx)                                                             # shear strain-rate in xy-direction
+            Exy          .= 0.5.*(diff(Vy,dims=1)./dx .+ diff(Vx,dims=2)./dy)                                                             # shear strain-rate in xy-direction
             Sxx          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Exx                                                                          # total stress (dani class 5 equation)
             Syy          .= .-P[2:end-1,2:end-1] .+ 2.0.*mu.*Eyy                                                                          # total stress
             Sxy          .=                         2.0.*mu.*Exy                                                                            # total stress

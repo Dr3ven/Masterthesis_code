@@ -1,7 +1,6 @@
 #using Pkg
 #Pkg.activate(".")
 using CairoMakie
-using TimerOutputs
 using Infiltrator
 using GeoParams
 
@@ -85,6 +84,181 @@ function advection2d(A, Vx, Vy, dx_non, dy_non, dt)
     return A
 end
 
+function find_boundary_indices(maskrho_air)
+    x_circ_ind = []
+    y_circ_ind = []
+
+    for y= 2:size(maskrho_air)[1] - 1
+        for x = 2:size(maskrho_air)[2] - 1
+            if (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x - 1, y]) == 1.0)
+                push!(x_circ_ind, x)
+                push!(y_circ_ind, y)
+            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x + 1, y]) == 1.0 )
+                push!(x_circ_ind, x)
+                push!(y_circ_ind, y)
+            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x, y - 1]) == 1.0)
+                push!(x_circ_ind, x)
+                push!(y_circ_ind, y)
+            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x, y + 1]) == 1.0)
+                push!(x_circ_ind, x)
+                push!(y_circ_ind, y)
+            end
+        end
+    end
+    return x_circ_ind, y_circ_ind
+end
+
+function update_densityflux(Frhox, Frhoy, Vx, Vy, rho)
+    Frhox .= (Vx .> 0.0).*Vx.*rho[1:end-1, :] .+ (Vx .< 0.0).*Vx.*rho[2:end, :]
+    Frhoy .= (Vy .> 0.0).*Vy.*rho[:, 1:end-1] .+ (Vy .< 0.0).*Vy.*rho[:, 2:end]
+    return Frhox, Frhoy
+end
+
+function update_drhodt(drhodt, rho, rho_old, dt)
+    drhodt .= (rho .- rho_old)./dt
+    return drhodt
+end
+
+function update_densityResidual(rhoRes, drhodt, Frhox, Frhoy, dx_non, dy_non, mask)
+    rhoRes .= .-drhodt[2:end-1, 2:end-1] .- diff(Frhox[:, 2:end-1], dims=1)./dx_non .- diff(Frhoy[2:end-1, :], dims=2)./dy_non        # updating residual of density
+    rhoRes .= rhoRes .* mask[2:end-1, 2:end-1]                                                                               # applying mask to residual of density
+    return rhoRes
+end
+
+function update_density(rho, rhoRes, dtrho, CFL_P)
+    rho[2:end-1, 2:end-1] .= rho[2:end-1, 2:end-1] .+ rhoRes .* dtrho .* CFL_P                   # updating density
+    return rho
+end
+
+function update_pressure(P, P_non, ρa, ρs, ρ, β, mask1, mask2)
+    P .= P_non ./ ρa .* ρ .* mask1                                                 # equation of state for pressure depending on density
+    P .+= (P_non .+  (1.0 ./ β) .* log.(ρ ./ ρs)) .* mask2                                                 # equation of state for pressure depending on density
+    return P
+end
+
+function update_divergenceV(divV, Vx, Vy, dx_non, dy_non)
+    divV .= diff(Vx[:,2:end-1], dims=1)./dx_non .+ diff(Vy[2:end-1,:],dims=2)./dy_non                                             # divergence of velocity
+    return divV
+end
+
+function update_strainrates(εxx, εyy, εxy, Vx, Vy, divV, dx_non, dy_non)
+    εxx .= diff(Vx[:,2:end-1],dims=1)./dx_non .- 1.0./3.0.*divV                                                               # strain-rate in x-direction
+    εyy .= diff(Vy[2:end-1,:],dims=2)./dy_non .- 1.0./3.0.*divV                                                               # strain-rate in y-direction
+    εxy .= 0.5.*(diff(Vy,dims=1)./dx_non .+ diff(Vx,dims=2)./dy_non)                                                             # shear strain-rate in xy-direction
+    return εxx, εyy, εxy
+end
+
+function update_totalstresses(σxx, σyy, σxy, P, η, εxx, εyy, εxy)
+    σxx .= .-P[2:end-1,2:end-1] .+ 2.0 .* η .* εxx                                                                          # total stress (dani class 5 equation)
+    σyy .= .-P[2:end-1,2:end-1] .+ 2.0 .* η .* εyy                                                                          # total stress
+    σxy .=                         2.0 .* η .* εxy                                                                            # total stress
+    return σxx, σyy, σxy
+end
+
+function update_advection_momentum(Mx, My, Vx, Vy, ρ)
+    Mx .= av_x(ρ).*Vx                                                             # momentum in x-direction
+    My .= av_y(ρ).*Vy                                                             # momentum in y-direction
+    return Mx, My
+end
+
+function update_momentumflux(FMxx, FMyy, FMxy, FMyx, Vx, Vy, Mx, My, σxx, σyy, σxy, dx_non, dy_non)
+    FMxx .= (av_x(Vx[ :     ,2:end-1]).> 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[1:end-1,2:end-1] .+ (av_x(Vx[ :     ,2:end-1]).< 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[2:end  ,2:end-1]  # upwind advective momentum flux
+    FMxy .= (av_x(Vy[2:end-1, :     ]).> 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,1:end-1] .+ (av_x(Vy[2:end-1, :     ]).< 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,2:end  ]  # upwind advective momentum flux
+    FMyx .= (av_y(Vx[ :     ,2:end-1]).> 0.0).*av_y(Vx[ :     ,2:end-1]).*My[1:end-1,2:end-1] .+ (av_y(Vx[ :     ,2:end-1]).< 0.0).*av_y(Vx[ :     ,2:end-1]).*My[2:end  ,2:end-1]  # upwind advective momentum flux
+    FMyy .= (av_y(Vy[2:end-1, :     ]).> 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,1:end-1] .+ (av_y(Vy[2:end-1, :     ]).< 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,2:end  ]  # upwind advective momentum flux
+    return FMxx, FMyy, FMxy, FMyx
+end
+
+function update_dMdt(dMxdt, dMydt, Mx, My, Mx_old, My_old, dt)
+    dMxdt .= (Mx .- Mx_old)./dt
+    dMydt .= (My .- My_old)./dt
+    return dMxdt, dMydt
+end
+
+function update_momentumResidual(MxRes, MyRes, dMxdt, dMydt, FMxx, FMyy, FMxy, FMyx, σxx, σyy, σxy, dx_non, dy_non, g_non, rho, mask1, mask2)
+    MxRes .= .-dMxdt[2:end-1,2:end-1] .- diff(FMxx .- σxx,dims=1)./dx_non .- diff(FMxy .- σxy[2:end-1,:],dims=2)./dx_non                                               # updating residual of momentum in y-direction
+    MyRes .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- σyy,dims=2)./dy_non .- diff(FMyx .- σxy[:,2:end-1],dims=1)./dx_non .- g_non .* av_y(rho[2:end-1,2:end-1])        # updating residual of momentum in x-direction
+    MxRes .= MxRes .* mask1[2:end-1, 2:end-1]                                                                               # applying mask to residual of momentum in x-direction
+    MyRes .= MyRes .* mask2[2:end-1, 2:end-1]                                                                               # applying mask to residual of momentum in y-direction
+    return MxRes, MyRes
+end
+
+function update_dMdτ(dMxdτ, dMydτ, MxRes, MyRes, ksi)
+    dMxdτ .= MxRes .+ dMxdτ .* ksi
+    dMydτ .= MyRes .+ dMydτ .* ksi
+    return dMxdτ, dMydτ
+end
+
+function update_inertia_momentum(Mx, My, dMxdτ, dMydτ, dtPT, CFL_V)
+    Mx[2:end-1,2:end-1] .= Mx[2:end-1,2:end-1] .+ dMxdτ.*av_x(dtPT).*CFL_V
+    My[2:end-1,2:end-1] .= My[2:end-1,2:end-1] .+ dMydτ.*av_y(dtPT).*CFL_V
+
+    set_momentum_bc!(Mx, My)
+    return Mx, My
+end
+
+function update_velocities(Vx, Vy, Mx, My, ρ)
+    Vx .= Mx ./ av_x(ρ)
+    Vy .= My ./ av_y(ρ)
+
+    set_velocity_bc!(Vx)
+    return Vx, Vy
+end
+
+function set_momentum_bc!(Mx, My)
+    Mx[1,:]   .= Mx[2,:]
+    Mx[end,:] .= Mx[end-1,:]
+    Mx[:,1]   .= Mx[:,2]
+    Mx[:,end] .= Mx[:,end-1]
+
+    My[1,:]   .= My[2,:]
+    My[end,:] .= My[end-1,:]
+    My[:,1]   .= My[:,2]
+    My[:,end] .= My[:,end-1]
+    return Mx, My
+end
+
+function set_velocity_bc!(Vx)
+    Vx[1,:] .= 0.0
+    Vx[end,:] .= 0.0
+    return Vx
+end
+
+function seismic_solver(P, beta_vec, rho, divV, Exx, Eyy, Exy, Vx, Vy, μ, μ_c, η, η_c, dt, maskrho, maskVx, maskVy)
+    # Allocations
+    dPdt    = zeros(Float64, nx + 2, ny + 2)
+    τxx     = zeros(Float64, nx, ny)
+    τyy     = zeros(Float64, nx, ny)
+    τxy     = zeros(Float64, nx + 1, ny + 1)
+    dτxxdt  = zeros(Float64, nx, ny)
+    dτyydt  = zeros(Float64, nx, ny)
+    dτxydt  = zeros(Float64, nx + 1, ny + 1)
+    Pτxx    = zeros(Float64, nx - 1, ny)
+    Pτyy    = zeros(Float64, nx, ny - 1)
+    dVxdt   = zeros(Float64, nx + 1, ny + 2)
+    dVydt   = zeros(Float64, nx + 2, ny + 1)
+
+    dPdt[2:end-1, 2:end-1].= .-(1.0 ./ beta_vec[2:end-1, 2:end-1]) .* divV
+    P .+= P .+ dPdt .* dt .* maskrho
+    dτxxdt .= 2.0 .* μ .* Exx .- (μ ./ η) .* τxx
+    dτyydt .= 2.0 .* μ .* Eyy .- (μ ./ η) .* τyy         
+    dτxydt .= 2.0 .* μ_c .* Exy .- (μ_c ./ η_c) .* τxy             
+    τxx .= τxx .+ dτxxdt .* dt
+    τyy .= τyy .+ dτyydt .* dt
+    τxy .= τxy .+ dτxydt .* dt
+    Pτxx .=.-diff(P_s[2:end-1,2:end-1], dims=1) ./ dx_non .+ diff(τxx, dims=1) ./ dx_non .+ diff(τxy[2:end-1, :], dims=2) ./ dy_non
+    Pτyy .=.-diff(P_s[2:end-1,2:end-1], dims=2) ./ dy_non .+ diff(τyy, dims=2) ./ dy_non .+ diff(τxy[:, 2:end-1], dims=1) ./ dx_non .+ g_non .* (rho[2:end-1, 2:end-2] .* (Vy[2:end-1, 2:end-1] .>= 0.0) .+ rho[2:end-1, 3:end-1] .* (Vy[2:end-1, 2:end-1] .< 0.0))
+    dVxdt[2:end-1, 2:end-1] .= (1.0 ./ (rho[2:end-2, 2:end-1] .* (Vx[2:end-1, 2:end-1] .>= 0.0) .+ rho[3:end-1, 2:end-1] .* (Vx[2:end-1, 2:end-1] .< 0.0))) .* (Pτxx) .- Vx[2:end-1, 2:end-1] .* diff(av_x(Vx[:, 2:end-1]), dims=1) ./ dx_non .+ av_x(av_y(Vy[2:end-1, :])) .* diff(av_x(Vx[:, 2:end-1]), dims=1) ./ dy_non
+    dVydt[2:end-1, 2:end-1] .= (1.0 ./ (rho[2:end-1, 2:end-2] .* (Vy[2:end-1, 2:end-1] .>= 0.0) .+ rho[2:end-1, 3:end-1] .* (Vy[2:end-1, 2:end-1] .< 0.0))) .* (Pτyy) .- Vy[2:end-1, 2:end-1] .* diff(av_y(Vy[2:end-1, :]), dims=2) ./ dy_non .+ av_y(av_x(Vx[:, 2:end-1])) .* diff(av_y(Vy[2:end-1, :]), dims=2) ./ dx_non
+    Vx[2:end-1, :] .= Vx[2:end-1, :] .+ dVxdt[2:end-1, :] .* dt .* maskVx[2:end-1, :] 
+    Vy[:, 2:end-1] .= Vy[:, 2:end-1] .+ dVydt[: ,2:end-1] .* dt .* maskVy[: ,2:end-1]
+    return P, Vx, Vy
+end
+
+function set_pressure_bc!(P, surf_ind_x, surf_ind_y)
+    P[surf_ind_x, surf_ind_y] .= P[surf_ind_x, surf_ind_y .+ 1]
+    return P
+end
 function conservative2D_ve()
     # Physics
     Lx      = 1.0e3                             # length of domain in x-direction
@@ -94,32 +268,18 @@ function conservative2D_ve()
     rho_solid    = 2.8e3                        # density of solid
     Vx0     = 0.0                               # starting velocity in x-direction
     P0      = 1.0e5                               # pressure at rest
-    beta    = 1.0/141.0e3                       # compressibility
-    #beta_air      = 1.0e-6                         # compressibility
-    #beta_solid    = 1.0e-10                      # compressibility
     eta      = 1.81e-5                          # dynamic viscosity
     eta_air      = 1.0e-5                          # dynamic viscosity for air
-    eta_solid    = 1.0e21                         # dynamic viscosity for solid
-    #mu      = 1.81e-5                          # shear modulus
-    mu_air      = 1.0e25                           # shear modulus for air
+    eta_solid    = 1.0e19                         # dynamic viscosity for solid
+    mu_air      = 2.0e-3                           # shear modulus for air
     mu_solid    = 1.0e11                           # shear modulus for solid
     g_y       = 9.81 #1.0e-3                             # gravitational acceleration
-    a       = 200.0                             # wavelength content of excitation
 
     ν  = 0.4                            # Poisson's ratio
     λ  = (2.0 * mu_solid * ν) / (1.0 - 2.0 * ν)     # Lamé parameter 2
     K_s = (2.0 * mu_solid * (1.0 + ν)) / (3.0 * (1.0 - 2.0 * ν))                # model poisson ratio of the solid
     beta_air  = 1.0/141.0e3                         # compressibility
-    beta_solid  = 1.0 / K_s 
-
-    #K_air   = 1.0 / beta_air                     # bulk modulus of air
-    #K_solid = 1.0 / beta_solid                   # bulk modulus of solid
-    #ν_air   = (3.0 * K_air - 2.0 * mu_air) / (6.0 * K_air + 2.0 * mu_air)                 # model poisson ratio of the air
-    #ν_solid = (3.0 * K_solid - 2.0 * mu_solid) / (6.0 * K_solid + 2.0 * mu_solid)                # model poisson ratio of the solid
-    #ν_air2   = (K_air - mu_air) / (K_air + mu_air)                 # model poisson ratio of the air
-    #ν_solid2 = (K_solid - mu_solid) / (K_solid + mu_solid)                # model poisson ratio of the solid
-    #Erde_ν  = 1.0e21 / (2.0 * (1.0e21 + 1.0e10)) # realistic poisson ratio of the earth
-    #Luft_ν  = 1.0e-5 / (2.0 * (1.0e-5 + 1.0e25)) # realistic poisson ratio of the air
+    beta_solid  = 1.0 / K_s                        # compressibility
 
     # Numerics
     nx      = 301                               # number of nodes in x-direction
@@ -146,7 +306,6 @@ function conservative2D_ve()
     T       = 288.0                             # temperature
     M       = 0.028                             # molar mass of air
 
-    a_geo = a*m
     t_geo = t*s
     t0_geo = t0*s
     td_geo = t_d*s
@@ -168,7 +327,6 @@ function conservative2D_ve()
     g_geo  = g_y*m/s^2
     P_geo  = P0*Pa
 
-    a_non = nondimensionalize(a_geo, CharDim)
     t_non = nondimensionalize(t_geo, CharDim)
     t0_non = nondimensionalize(t0_geo, CharDim)
     td_non = nondimensionalize(td_geo, CharDim)
@@ -191,7 +349,7 @@ function conservative2D_ve()
     P_non  = nondimensionalize(P_geo, CharDim)
 
     # Reduce allocations
-    β       = zeros(Float64, nx + 2, ny + 2)
+    beta_vec= zeros(Float64, nx + 2, ny + 2)
     μ       = zeros(Float64, nx, ny)
     μ_c     = zeros(Float64, nx + 1, ny + 1)
     η       = zeros(Float64, nx, ny)
@@ -206,8 +364,14 @@ function conservative2D_ve()
     Frhoy   = zeros(Float64, nx + 2, ny + 1)
     drhodt  = zeros(Float64, nx + 2, ny + 2)
     rhoRes  = zeros(Float64, nx, ny)
+    rhoRes_a= zeros(Float64, nx, ny)
+    rhoRes_s= zeros(Float64, nx, ny)
     rho     = zeros(Float64, nx + 2, ny + 2)
+    rho_a   = zeros(Float64, nx + 2, ny + 2)
+    rho_s   = zeros(Float64, nx + 2, ny + 2)
     P       = zeros(Float64, nx + 2, ny + 2)
+    P_a     = zeros(Float64, nx + 2, ny + 2)
+    P_s     = zeros(Float64, nx + 2, ny + 2)
     P_old   = zeros(Float64, nx + 2, ny + 2)
     divV    = zeros(Float64, nx, ny)
     Exx     = zeros(Float64, nx, ny)
@@ -227,12 +391,16 @@ function conservative2D_ve()
     FMxy    = zeros(Float64, nx - 1, ny + 1)
     dMxdt   = zeros(Float64, nx + 1, ny + 2)
     MxRes   = zeros(Float64, nx - 1, ny)
+    Vx_plt  = zeros(Float64, nx + 1, ny + 2)
+    Vx_s    = zeros(Float64, nx + 1, ny + 2)
     Vx      = zeros(Float64, nx + 1, ny + 2)
     My      = zeros(Float64, nx + 2, ny + 1)
     FMyy    = zeros(Float64, nx, ny)
     FMyx    = zeros(Float64, nx + 1, ny - 1)
     dMydt   = zeros(Float64, nx + 2, ny + 1)
     MyRes   = zeros(Float64, nx, ny - 1)
+    Vy_plt  = zeros(Float64, nx + 2, ny + 1)
+    Vy_s    = zeros(Float64, nx + 2, ny + 1)
     Vy      = zeros(Float64, nx + 2, ny + 1)
     rho_old = zeros(Float64, nx + 2, ny + 2)
     Mx_old  = zeros(Float64, nx + 1, ny + 2)
@@ -243,7 +411,6 @@ function conservative2D_ve()
     radVx   = zeros(Float64, nx + 1, ny + 2)
     radVy   = zeros(Float64, nx + 2, ny + 1)
     radμc   = zeros(Float64, nx + 1, ny + 1)
-    beta_vec= zeros(Float64, nx + 2, ny + 2)
 
     maskrho_air   = zeros(Float64, nx, ny)
     maskVx_air    = zeros(Float64, nx, ny)
@@ -282,9 +449,6 @@ function conservative2D_ve()
     x2dVy_non, y2dVy_non = meshgrid(Xc_non,Yv_non)                                      # 2d mesh of x- and y-coordinates of velocity nodes in y-direction
     x2dμc_non, y2dμc_non = meshgrid(Xv_non,Yv_non)                                      # 2d mesh of x- and y-coordinates of velocity nodes in y-direction
 
-    Vx        .= Vx0.*ones(nx + 1,ny + 2)                               # initial velocity in x-direction
-    Vx[1,:]   .= Vx0 
-    Vx[end,:] .= Vx0
     locX       = 0.0                                                     # x-coordinate of circle
     locY       = -0.35*Ly                                                # y-coordinate of circle
     diam       = 0.2*Lx                                                  # diameter of circle
@@ -321,49 +485,32 @@ function conservative2D_ve()
     maskVx_solid  = 1.0 .- maskVx_air
     maskVy_solid  = 1.0 .- maskVy_air
 
-    x_circ_ind = []
-    y_circ_ind = []
+    x_circ_ind, y_circ_ind = find_boundary_indices(maskrho_air)
 
-    for y= 2:size(maskrho_air)[1] - 1
-        for x = 2:size(maskrho_air)[2] - 1
-            if (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x - 1, y]) == 1.0)
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x + 1, y]) == 1.0 )
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x, y - 1]) == 1.0)
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x, y + 1]) == 1.0)
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            end
-        end
-    end
+    # 90 is the indicie at the surface with 301 nodes
+    ind_y = findall(x->x>90, y_circ_ind)
+    surf_ind_y = y_circ_ind[ind_y]
+    surf_ind_x = x_circ_ind[ind_y]
 
     # Initial conditions
-    #@. β      += beta_air * (maskrho_air == 1.0) + beta_solid * (maskrho_solid == 1.0)                  # initial viscosity distribution  
-    @. β      += βa_non                                                                                   # initial viscosity distribution  
-
-    P         .= (P_non.*exp.(-g_non.*(y2dc_non[1:end-1, 1:end-1].+1.0./5.0.*L_non).*M_non ./ T_non ./ R_non))# .* maskrho_closedchamber_air .+ reverse(cumsum(ρs_non.* g_non .* reverse(maskrho_solid, dims=2)*dy_non,dims=2), dims=2)                             # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
+    P         .= (P_non.*exp.(-g_non.*(y2dc_non[1:end-1, 1:end-1].+1.0./5.0.*L_non).*M_non ./ T_non ./ R_non)) .* maskrho_air .+ reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2).*dy_non,dims=2), dims=2) .* maskrho_solid                         # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
 
     #rho       .= (rho0 .* P) ./ P0 .* maskrho_air .+ rho_solid .* maskrho_solid                         # equation of state for density depending on pressure
-    rho       .= (ρa_non .* P) ./ P_non# .* maskrho_closedchamber_air .+ ρs_non .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
+    rho       .= ρa_non ./ P_non .* P .* (maskrho_air .== 1.0) .+ ρs_non .* (maskrho_solid .== 1.0)    # equation of state for density depending on pressure
     rho[radrho .< diam ./ 2.0] .= ρa_non .+ ρc_non                                                          # initial density in the circle
-    #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= rho0#.+drho          # initial density of the conduit overlapping with the circular chamber (so in the chamber)
-    #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.15.*Ly).*drho./(-0.15.-(locY.+diam./2.0)).+rho0    # initial density in the conduit
-    #P .= reverse(cumsum(rho_solid.*g.*reverse(test, dims=2)*dy_non,dims=2), dims=2)
-    P[radrho .< diam ./ 2.0]         .= (P_non .* rho[radrho .< diam ./ 2.0]) ./ ρa_non #.+ (rho[radrho .< diam ./ 2.0] .* g .* depth[radrho .< diam ./ 2.0])#P0 ./ rho0 .* rho
+    rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= ρa_non .+ ρc_non          # initial density of the conduit overlapping with the circular chamber (so in the chamber)
+    rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= .-0.0 .* (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.15.*Ly).*ρc_non./(-0.15.-(locY.+diam./2.0)).+ρa_non    # initial density in the conduit
+    #P .= reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2)*dy_non,dims=2), dims=2)
+    P        .+= (P_non .* rho) ./ ρa_non .* maskrho_air#.+ (rho[radrho .< diam ./ 2.0] .* g .* depth[radrho .< diam ./ 2.0])#P0 ./ rho0 .* rho
     #P         .+=(P0 .+  (1.0 ./ beta) .* log.(rho ./ rho_solid)) .* maskrho_solid
 
 
     # Initial parameter matrices for both phases
-    @. η += ηa_non# * (maskrho_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
-    @. μ += μa_non# * (maskrho_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
+    @. η += ηa_non* (maskrho_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
+    @. μ += μa_non* (maskrho_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
     
-    @. η_c += ηa_non# * (maskμc_air == 1.0) + ηs_non * (maskμc_solid == 1.0)   # initial viscosity distribution for corner nodes
-    @. μ_c += μa_non# * (maskμc_air == 1.0) + μs_non * (maskμc_solid == 1.0)     # initial viscosity distribution for corner nodes
+    @. η_c += ηa_non* (maskμc_air == 1.0) + ηs_non * (maskμc_solid == 1.0)   # initial viscosity distribution for corner nodes
+    @. μ_c += μa_non* (maskμc_air == 1.0) + μs_non * (maskμc_solid == 1.0)     # initial viscosity distribution for corner nodes
 
     # Inital plot 
     P_dim  = ustrip(dimensionalize(P, Pa, CharDim))
@@ -383,26 +530,17 @@ function conservative2D_ve()
     V = av_x(Vy)
     data_plt = sqrt(U.^2.0 .+ V.^2.0)
     
-    p1 = heatmap!(ax, x2dc, y2dc, P_dim, shading=false, colormap=Reverse(:roma))
+    p1 = heatmap!(ax, xc_dim, yc_dim, P_dim, colormap=Reverse(:roma))
     #p1 = heatmap!(ax, x2dc, y2dc , data_plt, shading=false, colorrange=(0.0, 350.0), colormap=Reverse(:roma))
     #p1 = heatmap!(ax, x2dc, y2dc , rho, shading=false, colormap=Reverse(:roma))#, colorrange=(P0, P0*2))
     #Colorbar(fig[1, 2], p1, label="Velocity", labelsize=25, ticklabelsize=25)
     Colorbar(fig[1, 2], p1, label="Pressure ", labelsize=25, ticklabelsize=25)
-    #points_XpYp = Point2f[]
-    #=for i in eachindex(Xp)
-        x = Xp[i]
-        y = Yp[i]
-        point = (x,y)
-        push!(points_XpYp, point)
-    end=#
-    #poly!(ax,points_XpYp)
-    #lines!(ax, Xp, Yp, color = :white) # only conduit
     #scatter!(ax, x_circ, y_circ, color = :white, markersize=4.0) # conduit and chamber
     display(fig)
-    if save_plt
-        mkdir(path)
-        save(path * "/0.png", fig)
-    end
+    #if save_plt
+    #    mkdir(path)
+    save("initial_conditions.png", fig)
+    #end
 
     # Solver
     
@@ -422,93 +560,45 @@ function conservative2D_ve()
         dMxdtau .= 0.0                                              # stress derivative of momentum in x-direction
         dMydtau .= 0.0                                              # stress derivative of momentum in y-direction
         err_vec = zeros(Float64, 1000, 5) .* NaN
+        # PT Solver for Atmosphere part
         while err > 1.0e-3 #&& iter < 25*360
             iter += 1
             beta_vec .= 1.0 ./ P
-            c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1])                                                    # local speed of sound
-            dt = minimum([dx_non./maximum(abs.(Vx)), dy_non./maximum(abs.(Vy)), min(dx_non, dy_non) .* sqrt(maximum(rho .* β)), min(dx_non, dy_non).^2.0./maximum(η)]).*4.1 # time step size  
-            dtPT .= min.(min.(min.(dx_non ./ abs.(av_x(Vx[:, 2:end-1])), dx_non ./ abs.(av_y(Vy[2:end-1, :]))), min(dx_non, dy_non).^2.0 ./ η), dx_non ./ c_loc) # time step size for pressure and temperature
+            @infiltrate
+            #c_loc .= 1.0./sqrt.(rho[2:end-1,2:end-1].* beta_vec[2:end-1,2:end-1]) .* maskrho_air[2:end-1,2:end-1]                                                    # local speed of sound
+            dt = minimum([dx_non./maximum(abs.(Vx)), dy_non./maximum(abs.(Vy)), min(dx_non, dy_non) .* sqrt(maximum(rho .* beta_vec)), min(dx_non, dy_non).^2.0./maximum(η)]).*4.1 # time step size  
+            dtPT .= min.(min.(min.(dx_non ./ abs.(av_x(Vx[:, 2:end-1])), dx_non ./ abs.(av_y(Vy[2:end-1, :]))), min(dx_non, dy_non).^2.0 ./ η))#, dx_non ./ c_loc) # time step size for pressure and temperature
             dtrho .= 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx_non, dy_non) ./ c_loc ./ 4.1))                                                         # time step size for density
 
             # Conservation of mass
-            Frhox .= (Vx .> 0.0).*Vx.*rho[1:end-1, :] .+ (Vx .< 0.0).*Vx.*rho[2:end, :] # mass flux in x-direction (upwind scheme)
-            Frhoy .= (Vy .> 0.0).*Vy.*rho[:, 1:end-1] .+ (Vy .< 0.0).*Vy.*rho[:, 2:end] # mass flux in y-direction (upwind scheme)
-            drhodt .= (rho .- rho_old)./dt                                                                           # time derivative of density
-            rhoRes .= .-drhodt[2:end-1, 2:end-1] .- diff(Frhox[:, 2:end-1], dims=1)./dx_non .- diff(Frhoy[2:end-1, :], dims=2)./dy_non        # updating residual of density
-            rho[2:end-1, 2:end-1] .= rho[2:end-1, 2:end-1] .+ rhoRes.*dtrho.*CFL_P                   # updating density
+            Frhox, Frhoy            = update_densityflux(Frhox, Frhoy, Vx, Vy, rho)
+            drhodt                  = update_drhodt(drhodt, rho, rho_old, dt)
+            rhoRes                  = update_densityResidual(rhoRes, drhodt, Frhox, Frhoy, dx_non, dy_non, maskrho_air)
+            rho                     = update_density(rho, rhoRes, dtrho, CFL_P) #Frhox .= (Vx .> 0.0).*Vx.*rho[1:end-1, :] .+ (Vx .< 0.0).*Vx.*rho[2:end, :] # mass flux in x-direction
 
-            # Boundary conditions Inflow and outflow densities
-            #rho[1, :] .= rho[2, :]
-            #rho[end, :] .= rho[end-1, :]
-            # Boundary conditions impermeable walls
-            #rho[:, 1] .= rho[:, 2]
-            #rho[:, end] .= rho[:, end-1]
-
-            # Strain-rates and stresses
-            P = zeros(Float64, nx + 2, ny + 2)
-            #P              .+= ((1.0 ./ β) .* log.(rho ./ ρs_non) .+ P_non) .* maskrho_solid             # equation of state for pressure depending on density
-            #P              .+= ((P_non .* rho) ./ ρa_non ).* maskrho_air                                              # equation of state for pressure depending on density            
-            #P              .+= ((1.0 ./ β) .* log.(rho ./ ρs_non) .+ P_non) .* maskrho_closedchamber_solid             # equation of state for pressure depending on density
-            P              .+= ((P_non .* rho) ./ ρa_non) #.* maskrho_closedchamber_air                                              # equation of state for pressure depending on density            
-            divV         .= diff(Vx[:,2:end-1], dims=1)./dx_non .+ diff(Vy[2:end-1,:], dims=2)./dy_non                                             # divergence of velocity
-            Exx          .= diff(Vx[:,2:end-1], dims=1)./dx_non .- 1.0./3.0.*divV                                                               # strain-rate in x-direction
-            Eyy          .= diff(Vy[2:end-1,:], dims=2)./dy_non .- 1.0./3.0.*divV                                                               # strain-rate in y-direction
-            Ezz          .=                                .- 1.0./3.0.*divV                                                                      # strain-rate in z-direction
-            Exy          .= 0.5.*(diff(Vy,dims=1)./dx_non .+ diff(Vx,dims=2)./dy_non)                                                             # shear strain-rate in xy-direction
-            Sxx          .= .-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (Exx .+ ((Sxx_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))# .* maskrho_closedchamber_solid[2:end-1, 2:end-1] #.*μ.*  Exx .- (μ   ./ η) .*   (Sxx_old .+ P[2:end-1,2:end-1])                                                                          # stress in x-direction
-            Syy          .= .-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (Eyy .+ ((Syy_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))# .* maskrho_closedchamber_solid[2:end-1, 2:end-1] #.*μ.*  Eyy .- (μ   ./ η) .*   (Syy_old .+ P[2:end-1,2:end-1])                                             # stress in y-direction
-            Sxy          .=                         2.0 .* (1.0 ./ ((1.0 ./ η_c) .+ (1.0 ./ (μ_c .* dt)))) .* (Exy .+ (Sxy_old                          ./ (2.0 .* μ_c .* dt)))# .* maskμc_closedchamber_solid #.*μ_c.*Exy .- (μ_c ./ η_c) .* (Sxy_old .+ av_xy(P))                                                  # stress in xy-direction
-            Szz          .= .-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (Ezz .+ ((Szz_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))# .* maskrho_closedchamber_solid[2:end-1, 2:end-1] #μ.*  Ezz .- (μ   ./ η) .*   (Szz_old .+ P[2:end-1,2:end-1])                                             # stress in z-direction
-            #Sxx[152, 17]                        = (t_non - t0_non >= 0.0) * ((t_non - t0_non)/td_non^2.0 * exp(-(t_non - t0_non)/td_non))
-            #Syy[152, 17]                        = (t_non - t0_non >= 0.0) * ((t_non - t0_non)/td_non^2.0 * exp(-(t_non - t0_non)/td_non))
-            #Sxy[152, 17]                        = (time - t0 >= 0.0) * ((time - t0)/t_d^2.0 * exp(-(time - t0)/t_d))
-            dtV           = 1.0 ./ (1.0 ./ dt .+ 1.0 ./ (min(dx_non, dy_non).^2.0 ./ maximum(η) ./ 4.0)) .* CFL_V                                           # time step size for velocity
-
-            # Conservation of the x-component of momentum
-            Mx             .= av_x(rho).*Vx                                                             # momentum in x-direction
-            FMxx         .= (av_x(Vx[ :     ,2:end-1]).> 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[1:end-1,2:end-1] .+ (av_x(Vx[ :     ,2:end-1]).< 0.0).*av_x(Vx[ :     ,2:end-1]).*Mx[2:end  ,2:end-1]  # mass flux in x-direction (upwind scheme)
-            FMxy         .= (av_x(Vy[2:end-1, :     ]).> 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,1:end-1] .+ (av_x(Vy[2:end-1, :     ]).< 0.0).*av_x(Vy[2:end-1, :     ]).*Mx[2:end-1,2:end  ]  # mass flux in y-direction (upwind scheme)
-            dMxdt       .= (Mx.-Mx_old)./dt                                                                                             # time derivative of momentum in x-direction
-            MxRes      .= .-dMxdt[2:end-1,2:end-1] .- diff((FMxx .- Sxx),dims=1)./dx_non .- diff(FMxy .- Sxy[2:end-1,:],dims=2)./dy_non       # updating residual of momentum in x-direction
-            dMxdtau   .= MxRes .+ dMxdtau .* ksi                                                                                    # stress derivative of momentum in x-direction
-            Mx[2:end-1,2:end-1]  .= Mx[2:end-1,2:end-1] .+ dMxdtau.*av_x(dtPT).*CFL_V                                                     # updating momentum in x-direction
-            Vx           .= Mx./av_x(rho)                                                              # velocity in x-direction
-
-            # BC fixed walls (normal velocity = 0)
-            Mx[:,1]      .= Mx[:,2]
-            Mx[:,end]    .= Mx[:,end-1]
-            # BC no slip on vertical walls
-            #Mx[1,:]      .= Mx[2,:]
-            #Mx[end,:]    .= Mx[end-1,:]
-            
-            Vx[1,:]                           .= Vx0
-            Vx[end,:]                         .= Vx0
-            
-            # Conservation of the y component of momentum
-            My             .= av_y(rho).*Vy                                                              # momentum in y-direction
-            FMyy         .= (av_y(Vy[2:end-1, :     ]).> 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,1:end-1] .+ (av_y(Vy[2:end-1, :     ]).< 0.0).*av_y(Vy[2:end-1, :     ]).*My[2:end-1,2:end  ]  # mass flux in y-direction
-            FMyx         .= (av_y(Vx[ :     ,2:end-1]).> 0.0).*av_y(Vx[ :     ,2:end-1]).*My[1:end-1,2:end-1] .+ (av_y(Vx[ :     ,2:end-1]).< 0.0).*av_y(Vx[ :     ,2:end-1]).*My[2:end  ,2:end-1]  # mass flux in x-direction
-            dMydt       .= (My-My_old)./dt                                                                                              # time derivative of momentum in y-direction
-            MyRes      .= .-dMydt[2:end-1,2:end-1] .- diff(FMyy .- Syy,dims=2)./dy_non .- diff(FMyx .- Sxy[:,2:end-1],dims=1)./dx_non - g_non .* ((Vy[2:end-1, 2:end-1] .> 0.0) .* rho[2:end-1,2:end-2] .+ ((Vy[2:end-1, 2:end-1] .< 0.0) .* rho[2:end-1,3:end-1])) # drunken sailor chapter taras book: dt .* (av_xy(Vx[:, 2:end-1]) .* av_y(diff(rho[2:end,2:end-1], dims=1)) .+ Vy[2:end-1, 2:end-1] .* diff(rho[2:end-1,2:end-1], dims=2))
-            dMydtau   .= MyRes .+ dMydtau.*ksi                                                                                      # stress derivative of momentum in y-direction
-            My[2:end-1,2:end-1]  .= My[2:end-1,2:end-1] .+ dMydtau.*av_y(dtPT).*CFL_V                                                     # updating momentum in y-direction
-            Vy             .= My./av_y(rho)                   # updating velocity in y-direction
-
-            # BC fixed walls (normal velocity = 0)
-            My[1,:]      .= -My[2,:]
-            My[end,:]    .= -My[end-1,:]
-            # BC no slip on horizontal walls
-            My[:,1]      .= My[:,2]
-            My[:,end]    .= My[:,end-1]
+            # Pressure, strain-rates and stresses
+            P                       = update_pressure(P, P_non, ρa_non, ρs_non, rho, beta_vec, maskrho_air, maskrho_solid)
+            divV                    = update_divergenceV(divV, Vx, Vy, dx_non, dy_non)
+            Exx, Eyy, Exy           = update_strainrates(Exx, Eyy, Exy, Vx, Vy, divV, dx_non, dy_non)
+            Sxx, Syy, Sxy           = update_totalstresses(Sxx, Syy, Sxy, P, ηa_non, Exx, Eyy, Exy)
+                    
+            # Conservation of the x and y-component of momentum
+            Mx, My                  = update_advection_momentum(Mx, My, Vx, Vy, rho)
+            FMxx, FMyy, FMxy, FMyx  = update_momentumflux(FMxx, FMyy, FMxy, FMyx, Vx, Vy, Mx, My, Sxx, Syy, Sxy, dx_non, dy_non)
+            dMxdt, dMydt            = update_dMdt(dMxdt, dMydt, Mx, My, Mx_old, My_old, dt)
+            MxRes, MyRes            = update_momentumResidual(MxRes, MyRes, dMxdt, dMydt, FMxx, FMyy, FMxy, FMyx, Sxx, Syy, Sxy, dx_non, dy_non, g_non, rho, maskVx_air, maskVy_air)
+            dMxdtau, dMydtau        = update_dMdτ(dMxdtau, dMydtau, MxRes, MyRes, ksi)
+            Mx, My                  = update_inertia_momentum(Mx, My, dMxdtau, dMydtau, dtPT, CFL_V)
+            Vx, Vy                  = update_velocities(Vx, Vy, Mx, My, rho)
 
             #if it >= 1 && iter ==2290
             #    @infiltrate
             #end
 
-            if mod(iter, 1) == 0
+            if mod(iter, 25) == 0
                 it_counter += 1
-                err = maximum(abs.([rhoRes[:]; MxRes[:]; MyRes[:]]))
-                print("PT_iter = $iter, err = $err, rhoRes = $(maximum(abs.(rhoRes[:]))), MxRes = $(maximum(abs.(MxRes[:]))), MyRes = $(maximum(abs.(MyRes[:])))\n")
+                err = maximum(abs.([rhoRes_a[:]; MxRes[:]; MyRes[:]]))
+                print("PT_iter = $iter, err = $err, rhoRes = $(maximum(abs.(rhoRes_a[:]))), MxRes = $(maximum(abs.(MxRes[:]))), MyRes = $(maximum(abs.(MyRes[:])))\n")
                 if isnan(err) == 1 
                     break
                 end
@@ -540,10 +630,41 @@ function conservative2D_ve()
             if err <= 1.0e-3
                 @show it_counter
                 print("------------------------------------------------------------------------------------\n")
+                #@infiltrate
             end
         end
-        #global time = time
+
+        # Explicit Solver for Earth part                                                                           # time derivative of density
+        #rhoRes_s .= .-drhodt[2:end-1, 2:end-1] .- diff(Frhox[:, 2:end-1], dims=1)./dx_non .- diff(Frhoy[2:end-1, :], dims=2)./dy_non        # updating residual of density
+        #rhoRes_s .= rhoRes_s .* maskrho_solid
+        #rho_s[2:end-1, 2:end-1] .= rho_s[2:end-1, 2:end-1] .+ rhoRes_s .* dtrho .* CFL_P
+        
+        #P, Vx, Vy = seismic_solver(P, beta_vec, rho, divV, Exx, Eyy, Exy, Vx, Vy, μ, μ_c, η, η_c, dt, maskrho_solid, maskVx_solid, maskVy_solid)
+        
+        #=dPdt[2:end-1, 2:end-1].= .-(1.0 ./ beta_vec[2:end-1, 2:end-1]) .* divV
+        P .+= P .+ dPdt .* dt .* maskrho_solid
+        dτxxdt .= 2.0 .* μ .* Exx .- (μ ./ η) .* τxx
+        dτyydt .= 2.0 .* μ .* Eyy .- (μ ./ η) .* τyy         
+        dτxydt .= 2.0 .* μ_c .* Exy .- (μ_c ./ η_c) .* τxy             
+        τxx .= τxx .+ dτxxdt .* dt
+        τyy .= τyy .+ dτyydt .* dt
+        τxy .= τxy .+ dτxydt .* dt
+        Pτxx .=.-diff(P_s[2:end-1,2:end-1], dims=1) ./ dx_non .+ diff(τxx, dims=1) ./ dx_non .+ diff(τxy[2:end-1, :], dims=2) ./ dy_non
+        Pτyy .=.-diff(P_s[2:end-1,2:end-1], dims=2) ./ dy_non .+ diff(τyy, dims=2) ./ dy_non .+ diff(τxy[:, 2:end-1], dims=1) ./ dx_non .+ g_non .* (rho[2:end-1, 2:end-2] .* (Vy_s[2:end-1, 2:end-1] .>= 0.0) .+ rho[2:end-1, 3:end-1] .* (Vy_s[2:end-1, 2:end-1] .< 0.0))
+        dVxdt[2:end-1, 2:end-1] .= (1.0 ./ (rho[2:end-2, 2:end-1] .* (Vx_s[2:end-1, 2:end-1] .>= 0.0) .+ rho[3:end-1, 2:end-1] .* (Vx_s[2:end-1, 2:end-1] .< 0.0))) .* (Pτxx) .- Vx_s[2:end-1, 2:end-1] .* diff(av_x(Vx_s[:, 2:end-1]), dims=1) ./ dx_non .+ av_x(av_y(Vy_s[2:end-1, :])) .* diff(av_x(Vx_s[:, 2:end-1]), dims=1) ./ dy_non
+        dVydt[2:end-1, 2:end-1] .= (1.0 ./ (rho[2:end-1, 2:end-2] .* (Vy_s[2:end-1, 2:end-1] .>= 0.0) .+ rho[2:end-1, 3:end-1] .* (Vy_s[2:end-1, 2:end-1] .< 0.0))) .* (Pτyy) .- Vy_s[2:end-1, 2:end-1] .* diff(av_y(Vy_s[2:end-1, :]), dims=2) ./ dy_non .+ av_y(av_x(Vx_s[:, 2:end-1])) .* diff(av_y(Vy_s[2:end-1, :]), dims=2) ./ dx_non
+        Vx_s[2:end-1, :] .= Vx_s[2:end-1, :] .+ dVxdt[2:end-1, :] .* dt .* maskVx_solid[2:end-1, :] 
+        Vy_s[:, 2:end-1] .= Vy_s[:, 2:end-1] .+ dVydt[: ,2:end-1] .* dt .* maskVy_solid[: ,2:end-1]=#
+        
         t_non = t_non + dt
+
+        # Bring together both parts of velocity and pressure calculations
+        #rho .= rho_a .+ rho_s
+
+        #P .= P_a .+ P_s
+
+        #Vx_plt .= Vx .+ Vx_s
+        #Vy_plt .= Vy .+ Vy_s
 
         # Updating plot
         if mod(it-1, 1) == 0
@@ -556,7 +677,7 @@ function conservative2D_ve()
             P_plt = ustrip(dimensionalize(P, Pa, CharDim))
             t_dim = dimensionalize(t_non, s, CharDim)
 
-            fig1 = Figure(resolution=(2000,2000))
+            fig1 = Figure(size=(800,600))
             ax1 = Axis(fig1[1,1], xticks=([-500, 0, 500], ["-500", "0", "500"]), yticks=([-500, 0, 500], ["-500", "0", "500"]),
                     yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
             ax2 = Axis(fig1[2,1], xticks=([-500, 0, 500], ["-500", "0", "500"]), yticks=([-500, 0, 500], ["-500", "0", "500"]),
@@ -569,9 +690,9 @@ function conservative2D_ve()
 
             #data_plt = sqrt.(U.^2.0 .+ V.^2.0)
 
-            hm = heatmap!(ax1, xc_dim, yc_dim, P_plt, shading=false,)# colorrange=(P0, P0*2))
+            hm = heatmap!(ax1, xc_dim, yc_dim, P_plt)# colorrange=(P0, P0*2))
             #hm = heatmap!(ax1, X[2:end-1, 2:end-1], Y[2:end-1, 2:end-1], data_plt[2:end-1, 2:end-1], shading=false, colormap=Reverse(:roma))#, colorrange=(0.0, 0.1),)
-            hm2 = heatmap!(ax2, X[2:end-1, 2:end-1], Y[2:end-1, 2:end-1], data_plt[2:end-1, 2:end-1], shading=false, colormap=Reverse(:roma))#, colorrange=(0.0, 0.01),)
+            hm2 = heatmap!(ax2, xc_dim[2:end-1], yc_dim[2:end-1], data_plt[2:end-1, 2:end-1], colormap=Reverse(:roma), colorrange=(0.0, 1000.0),)
             Colorbar(fig1[1,2],  hm, label="Pressure [Pa]", labelsize=25, ticklabelsize=25)
             #Colorbar(fig1[1,2],  hm, label="Velocity", labelsize=25, ticklabelsize=25)
             Colorbar(fig1[2,2],  hm2, label="Velocity [m/s]", labelsize=25, ticklabelsize=25)

@@ -129,7 +129,7 @@ function wave_1D(; wave=true)
             scatter!(ax2, xv_vec, Vx)
             scatter!(ax3, xc_vec, P)
             scatter!(ax4, xc_vec, e)
-            save("./Pictures/sod_shock_tube_$i.png", fig2)
+            save("./Pictures/Bothtypes/Navier_Stokes_shockandseismic_$i.png", fig2)
             display(fig2)
             @infiltrate
         end

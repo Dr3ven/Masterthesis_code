@@ -80,25 +80,44 @@ function sod()
     e .= P./(γ-1)./ρ
     e_anal = vals.p./((γ-1).*vals.ρ)
 
-    #opts = (;linewidth = 2, color = :red, )  
-    fig = Figure(size=(1000,800); fontsize=20)
-    ax1 = Axis(fig[1,1], title="Density, time = 0.14")
-    ax2 = Axis(fig[1,2], title="Velocity")
-    ax3 = Axis(fig[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
-    ax4 = Axis(fig[2,2], title="Energy")
-    # lines!(ax1, x_c, vals.ρ; opts...)
-    # lines!(ax2, x_c, vals.u; opts...)
-    # lines!(ax3, x_c, vals.p; opts...)
-    # lines!(ax4, x_c, e_anal; opts...)
-    l0 = lines!(ax1, x_c, ρ)
-    lines!(ax2, x_c, average(u))
-    lines!(ax3, x_c, P)
-    lines!(ax4, x_c, e)
-    push!(linplots, l0)
+    opts = (;linewidth = 2, color = :red, )  
+    fig = Figure(size=(1000,800); fontsize=26)
+    Label(fig[1,1:2], "Time = 0.14", tellwidth=false, font=:bold ,fontsize=30)
+    ax1 = Axis(fig[2,1], title="Density", xticklabelsvisible=false, xticksvisible=false)
+    ax2 = Axis(fig[2,2], title="Velocity", xticklabelsvisible=false, xticksvisible=false)
+    ax3 = Axis(fig[3,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+    ax4 = Axis(fig[3,2], title="Energy")
+    lines!(ax1, x_c, vals.ρ; opts...)
+    lines!(ax2, x_c, vals.u; opts...)
+    lines!(ax3, x_c, vals.p; opts...)
+    lines!(ax4, x_c, e_anal; opts...)
+    # l0 = lines!(ax1, x_c, ρ)
+    # lines!(ax2, x_c, average(u))
+    # lines!(ax3, x_c, P)
+    # lines!(ax4, x_c, e)
+    # push!(linplots, l0)
+    #vs1a = vspan!(ax1, 0.33, 0.49, color=(:lightskyblue1, 0.3))
+    #vs1b = vspan!(ax1, [0.33, 0.61, 0.7325], [0.49, 0.64, 0.7625], color=[(:lightskyblue1, 0.3), (:orange, 0.3), (:purple, 0.3)])
+    vs1 = vspan!(ax1, [0.33, 0.61, 0.7325], [0.49, 0.64, 0.7625], color=[(:lightskyblue1, 0.3), (:orange, 0.3), (:purple, 0.3)])
+    vs2 = vspan!(ax2, [0.33, 0.61, 0.7325], [0.49, 0.64, 0.7625], color=[(:lightskyblue1, 0.3), (:orange, 0.3), (:purple, 0.3)])
+    vs3 = vspan!(ax3, [0.33, 0.61, 0.7325], [0.49, 0.64, 0.7625], color=[(:lightskyblue1, 0.3), (:orange, 0.3), (:purple, 0.3)])
+    vs4 = vspan!(ax4, [0.33, 0.61, 0.7325], [0.49, 0.64, 0.7625], color=[(:lightskyblue1, 0.3), (:orange, 0.3), (:purple, 0.3)])
+    
+    #myblue = colorant"rgba(124,240,255,0.3)"
+    #myorange = colorant"rgba(191,0,255,0.3)"
+    #mypurple = colorant"rgba(224,166,108,0.3)"
+    #box1 = PolyElement(color=RGBAf(224,166,108,0.3))
+    #box2 = PolyElement(color=:orange, opacity=0.3)
+    #box3 = PolyElement(color=:purple, opacity=0.3)
+    #coloredboxes = [box1, box2, box3]
+    #Legend(fig[3,:], coloredboxes, ["Rarefaction", "Contact", "Shock"], "Wave types", tellwidth = false, nbanks=3)#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    #rowsize!(fig.layout, 3, 60)
+    
+    #save("/home/nils/Masterthesis_code/Plots/Boris_sod_shock_code/Analytical_solution_colored.png", fig)
     display(fig)
 
     # Time-stepping loop
-    for n in 1:Nt
+    #=for n in 1:Nt
         t += dt
 
         # Update density using the continuity equation
@@ -166,7 +185,7 @@ function sod()
     end
     Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*Nt, digits=5)), "Total time", tellwidth = false, nbanks=Int(floor((Nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
     rowsize!(fig.layout, 3, 60)
-    save("/home/nils/Masterthesis_code/Plots/Boris_sod_shock_code/Time_evolution_sod_shock_staggered.png", fig)
+    #save("/home/nils/Masterthesis_code/Plots/Boris_sod_shock_code/Time_evolution_sod_shock_staggered.png", fig)
     display(fig)
     #return ρ, u, P, E=#
 end

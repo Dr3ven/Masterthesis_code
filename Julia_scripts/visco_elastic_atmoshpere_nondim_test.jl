@@ -77,12 +77,13 @@ end
     Lx = 1.0e3                          # domain in x
     Ly = Lx                             # domain in y
     ρ_a = 1.225                           # density
+    ρ_c = 2.7e3                           # density chamber
     ρ_s = 2.8e3                           # density
-    η_a = 1.0e19                            # viscosity
-    η_s = 1.0e21                             # viscosity
-    μ_a = 1.0e22                            # shear modulus
-    μ_s = 1.0e10                             # shear modulus
-    P0 = 1.0e6                            # initial pressure at all points
+    η_a = 1.0e-5                            # viscosity
+    η_s = 1.0e19                             # viscosity
+    μ_a = 1.0e-5                            # shear modulus
+    μ_s = 1.0e11                             # shear modulus
+    P0 = 1.0e5                            # initial pressure at all points
     g_y = 9.81                             # gravity
     ν  = 0.4                            # Poisson's ratio
     λ  = (2.0 * μ_s * ν) / (1.0 - 2.0 * ν)     # Lamé parameter 2
@@ -257,22 +258,23 @@ end
     # Initial conditions
     cs_non  = sqrt(1.0/βs_non/ρs_non)                                                              # speed of sound / p-wave velocity in solid
     ca_non  = sqrt(1.0/βa_non/ρa_non)                                                              # speed of sound / p-wave velocity in air
-    dt = 1.0e-23 #min(min(dx, dy) / c / 4.5, min(dx^2.0, dy^2.0) / ((4.0 / 3.0) * η / ρ) / 4.5)        # time step size                       
+    dt = 1.0e-15 #min(min(dx, dy) / c / 4.5, min(dx^2.0, dy^2.0) / ((4.0 / 3.0) * η / ρ) / 4.5)        # time step size                       
 
     # Equilibrium pressure distribution in the air
+    #ρ[radrho .< diam ./ 2.0] .= ρa_non .+ ρc_non                                                          # initial density in the circle
     P .= P_non .* exp.(-g_non .* (y2dc_non .+ 1.0 ./ 5.0 .* L_non) .* M_non ./ T_non ./ R_non)
     # Pressure pertubation for the shockwave
-    P .+= P_non .+ exp.((.-0.5 .* ((xc_non .+ 0.1)/ 0.01).^2.0) .+ (.-0.5 .* ((yc_non .+ 0.451) / 0.01)'.^2.0))          # initial pressure distribution
+    P .+= P_non .+ exp.((.-0.005 .* ((xc_non)/ 0.01).^2.0) .+ (.-0.005 .* ((yc_non .+ 0.35) / 0.01)'.^2.0))          # initial pressure distribution
 
     # Setting up matrices for density, compressibility, viscosity and shear modulus
-    @. ρ    += ρa_non * (maskrho_air == 1.0) + (maskrho_solid  == 1.0) * ρs_non                 # density
-    @. ρ_vx += ρa_non * (maskVx_air  == 1.0) + (maskVx_solid   == 1.0) * ρs_non                 # density
-    @. ρ_vy += ρa_non * (maskVy_air  == 1.0) + (maskVy_solid   == 1.0) * ρs_non                 # density
-    @. β    += βa_non * (maskrho_air == 1.0) + (maskrho_solid  == 1.0) * βs_non               # compressibility
-    @. η    += ηa_non * (maskrho_air == 1.0) + (maskrho_solid  == 1.0) * ηs_non               # viscosity
-    @. η_c  += ηa_non * (maskμc_air  == 1.0) + (maskμc_solid   == 1.0) * ηs_non               # viscosity
-    @. μ    += μa_non * (maskrho_air == 1.0) + (maskrho_solid  == 1.0) * μs_non               # shear modulus
-    @. μ_c  += μa_non * (maskμc_air  == 1.0) + (maskμc_solid   == 1.0) * μs_non               # shear modulus
+    @. ρ    += ρs_non #* (maskrho_air == 1.0) #+ (maskrho_solid  == 1.0) * ρs_non                 # density
+    @. ρ_vx += ρs_non #* (maskVx_air  == 1.0) #+ (maskVx_solid   == 1.0) * ρs_non                 # density
+    @. ρ_vy += ρs_non #* (maskVy_air  == 1.0) #+ (maskVy_solid   == 1.0) * ρs_non                 # density
+    @. β    += βs_non #* (maskrho_air == 1.0) #+ (maskrho_solid  == 1.0) * βs_non               # compressibility
+    @. η    += ηs_non #* (maskrho_air == 1.0) #+ (maskrho_solid  == 1.0) * ηs_non               # viscosity
+    @. η_c  += ηs_non #* (maskμc_air  == 1.0) #+ (maskμc_solid   == 1.0) * ηs_non               # viscosity
+    @. μ    += μs_non #* (maskrho_air == 1.0) #+ (maskrho_solid  == 1.0) * μs_non               # shear modulus
+    @. μ_c  += μs_non #* (maskμc_air  == 1.0) #+ (maskμc_solid   == 1.0) * μs_non               # shear modulus
 
 
     #xc_vec = Vector(xc)
@@ -300,15 +302,16 @@ end
     ax = Axis(fig[1,1][1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
                 yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)#, title="t = $t")#, aspect = DataAspect())#, limits=(nothing, nothing, nothing, 1.1))
     hm = heatmap!(ax, xc_dim, yc_dim, P_dim, colormap=Reverse(:roma))
-    #lines!(ax, Xp, Yp, color=:white)
+    scatter!(ax, x_circ, y_circ, color=:white, markersize=4.0)
     Colorbar(fig[1,2][1,1], hm, label="Pressure", labelsize=25, ticklabelsize=25)#, vertical=false)
     display(fig)
     #save("../Plots/visco_elastic_shockwave_test/0.png", fig)
 
     # Time loop
     for i = 1:nt
+        #β = 1.0 ./ P
         divV .= diff(Vx, dims=1) ./ dx_non .+ diff(Vy, dims=2) ./ dy_non
-        dPdt .= .-(1.0 ./ βs_non) .* divV
+        dPdt .= .-(1.0 ./ β) .* divV
         P .= P .+ dPdt .* dt
         εxx .= diff(Vx, dims=1) ./ dx_non .- (1.0 ./ 3.0) .* divV
         εyy .= diff(Vy, dims=2) ./ dy_non .- (1.0 ./ 3.0) .* divV
@@ -319,10 +322,11 @@ end
         τxx .= τxx .+ dτxxdt .* dt
         τyy .= τyy .+ dτyydt .* dt
         τxy .= τxy .+ dτxydt .* dt 
-        dVxdt[2:end-1, :] .= (1.0 ./ ρ_vx[2:end-1, :]) .* (.-diff(P, dims=1) ./ dx_non .+ diff(τxx, dims=1) ./ dx_non .+ diff(τxy[2:end-1, :], dims=2) ./ dy_non)                              .- Vx[2:end-1, :] .* diff(av_x(Vx), dims=1) ./ dx_non .+ av_x(av_y(Vy)) .* diff(av_x(Vx), dims=1) ./ dy_non
-        dVydt[:, 2:end-1] .= (1.0 ./ ρ_vy[:, 2:end-1]) .* (.-diff(P, dims=2) ./ dy_non .+ diff(τyy, dims=2) ./ dy_non .+ diff(τxy[:, 2:end-1], dims=1) ./ dx_non .+ g_non .* ρ_vy[:, 2:end-1]) .- Vy[:, 2:end-1] .* diff(av_y(Vy), dims=2) ./ dy_non .+ av_y(av_x(Vx)) .* diff(av_y(Vy), dims=2) ./ dx_non
-        Vx[2:end-1, :] .= Vx[2:end-1, :] .+ dVxdt[2:end-1, :] .* dt .* maskVx_air[2:end-1, :]
-        Vy[:, 2:end-1] .= Vy[:, 2:end-1] .+ dVydt[: ,2:end-1] .* dt .* maskVy_air[:, 2:end-1]
+        dVxdt[2:end-1, :] .= (1.0 ./ av_x(ρ)) .* (.-diff(P, dims=1) ./ dx_non .+ diff(τxx, dims=1) ./ dx_non .+ diff(τxy[2:end-1, :], dims=2) ./ dy_non)                              .- Vx[2:end-1, :] .* diff(av_x(Vx), dims=1) ./ dx_non .+ av_x(av_y(Vy)) .* diff(av_x(Vx), dims=1) ./ dy_non
+        dVydt[:, 2:end-1] .= (1.0 ./ av_y(ρ)) .* (.-diff(P, dims=2) ./ dy_non .+ diff(τyy, dims=2) ./ dy_non .+ diff(τxy[:, 2:end-1], dims=1) ./ dx_non .+ g_non .* av_y(ρ)) .- Vy[:, 2:end-1] .* diff(av_y(Vy), dims=2) ./ dy_non .+ av_y(av_x(Vx)) .* diff(av_y(Vy), dims=2) ./ dx_non
+        #@infiltrate
+        Vx[2:end-1, :] .= Vx[2:end-1, :] .+ dVxdt[2:end-1, :] .* dt .* maskVx_solid[2:end-1, :]
+        Vy[:, 2:end-1] .= Vy[:, 2:end-1] .+ dVydt[: ,2:end-1] .* dt .* maskVy_solid[:, 2:end-1]
          
         Vx[1, :]   .= 0.0 #Vx[:, 2]
         Vx[end, :] .= 0.0 #Vx[:, end-1]
@@ -332,7 +336,7 @@ end
         t += dt
         
         # Plotting for the time steps
-        if i % 10 == 0
+        if i % 1 == 0
             # Dimensionalization for plotting
             Vy_dim = dimensionalize(Vy, m/s, CharDim)
             Vx_dim = dimensionalize(Vx, m/s, CharDim)
@@ -343,19 +347,19 @@ end
             t_dim = dimensionalize(t, s, CharDim)
 
             # Plotting
-            fig1 = Figure(resolution=(2000,2000))
-            ax1 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
-                    yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
-            ax2 = Axis(fig1[2,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
+            fig1 = Figure()#size=(1000,1000))
+            #ax1 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
+            #        yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
+            ax2 = Axis(fig1[1,1], xticks=(xytick_positions, xyticks), yticks=(xytick_positions, xyticks),
                     yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25, title="time = $t_dim")
 
             #lines!(ax2, xc_vec, P[:, Int(nx/2)])
-            hm1 = heatmap!(ax1, xc_dim, yc_dim, P_plt, colormap=Reverse(:roma))#, colorrange=(P0, maximum(P)))
-            hm2 = heatmap!(ax2, xc_dim, yc_dim, data_plt, colormap=Reverse(:roma))#, colorrange=(0, 8.0e-7))#, colorrange=(0.0, 1.0))
-            scatter!(ax1, x_circ, y_circ, color=:white, markersize=4.0)
+            #hm1 = heatmap!(ax1, xc_dim, yc_dim, P_plt, colormap=Reverse(:roma))#, colorrange=(P0, maximum(P)))
+            hm2 = heatmap!(ax2, xc_dim, yc_dim, data_plt, colormap=Reverse(:roma))#, colorrange=(0, 1500))#, colorrange=(0.0, 1.0))
+            #scatter!(ax1, x_circ, y_circ, color=:white, markersize=4.0)
             scatter!(ax2, x_circ, y_circ, color=:white, markersize=4.0)
-            Colorbar(fig1[1,2], hm1, label="Pressure [Pa]", labelsize=25, ticklabelsize=25)#, vertical=false)
-            Colorbar(fig1[2,2], hm2, label="Velocity [m/s]", labelsize=25, ticklabelsize=25)#, vertical=false)
+            #Colorbar(fig1[1,2], hm1, label="Pressure [Pa]", labelsize=25, ticklabelsize=25)#, vertical=false)
+            Colorbar(fig1[1,2], hm2, label="Velocity [m/s]", labelsize=25, ticklabelsize=25)#, vertical=false)
             display(fig1)
             #save("../Plots/visco_elastic_shockwave_test/$i.png", fig1)
 

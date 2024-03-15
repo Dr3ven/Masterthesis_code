@@ -82,6 +82,20 @@ function advection2d(A, Vx, Vy, dx_non, dy_non, dt)
     return A
 end
 
+function update_totalstresses_v(σxx, σyy, σxy, P, η, η_c, εxx, εyy, εxy)
+    σxx .= .-P[2:end-1,2:end-1] .+ 2.0 .* η .* εxx                                                                          # total stress (dani class 5 equation)
+    σyy .= .-P[2:end-1,2:end-1] .+ 2.0 .* η .* εyy                                                                          # total stress
+    σxy .=                         2.0 .* η_c .* εxy                                                                            # total stress
+    return σxx, σyy, σxy
+end
+
+function update_totalstresses_ve(σxx, σyy, σxy, σxx_old, σyy_old, σxy_old, P, P_old, η, η_c, μ, μ_c, εxx, εyy, εxy, dt)
+    σxx .= (.-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (εxx .+ ((σxx_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))) #.* maskrho_solid[2:end-1, 2:end-1] #.*μ.*  Exx .- (μ   ./ η) .*   (Sxx_old .+ P[2:end-1,2:end-1])                                                                          # stress in x-direction
+    σyy .= (.-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (εyy .+ ((σyy_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))) #.* maskrho_solid[2:end-1, 2:end-1] #.*μ.*  Eyy .- (μ   ./ η) .*   (Syy_old .+ P[2:end-1,2:end-1])                                             # stress in y-direction
+    σxy .= (                        2.0 .* (1.0 ./ ((1.0 ./ η_c) .+ (1.0 ./ (μ_c .* dt)))) .* (εxy .+ (σxy_old                          ./ (2.0 .* μ_c .* dt)))) #.* maskμc_solid #.*μ_c.*Exy .- (μ_c ./ η_c) .* (Sxy_old .+ av_xy(P))                                                  # stress in xy-direction                                                                        # total stress
+    return σxx, σyy, σxy
+end
+
 function conservative2D_ve()
     # Physics
     Lx      = 1.0e3                             # length of domain in x-direction
@@ -94,8 +108,8 @@ function conservative2D_ve()
     beta    = 1.0/141.0e3                       # compressibility
     beta_air    = 1.0e-6                         # compressibility
     eta         = 1.81e-5                          # dynamic viscosity
-    eta_air     = 1.0e19                          # dynamic viscosity for air
-    eta_solid   = 1.0e40                         # dynamic viscosity for solid
+    eta_air     = 1.0e-5                          # dynamic viscosity for air
+    eta_solid   = 1.0e19                         # dynamic viscosity for solid
     #mu         = 1.81e-5                          # shear modulus
     mu_air      = 1.0e13                           # shear modulus for air
     mu_solid    = 1.0e11                           # shear modulus for solid
@@ -258,10 +272,10 @@ function conservative2D_ve()
     Yc      = range(-(Ly+dy)/2.0, stop=(Ly+dy)/2.0, step=dy)            # y-coordinates of density nodes
     
     # Nondimensional coordinates
-    Xv_non  = range(-L_non, stop=L_non, step=dx_non)                    # x-coordinates of velocity nodes
-    Xc_non  = range(-(L_non+dx_non), stop=(L_non+dx_non), step=dx_non)  # x-coordinates of density nodes
-    Yv_non  = range(-L_non, stop=L_non, step=dy_non)                    # y-coordinates of velocity nodes
-    Yc_non  = range(-(L_non+dy_non), stop=(L_non+dy_non), step=dy_non)  # y-coordinates of density nodes
+    Xv_non  = range(-L_non, stop=L_non, length=nx+1)                    # x-coordinates of velocity nodes
+    Xc_non  = range(-(L_non+dx_non), stop=(L_non+dx_non), length=nx+2)  # x-coordinates of density nodes
+    Yv_non  = range(-L_non, stop=L_non, length=ny+1)                    # y-coordinates of velocity nodes
+    Yc_non  = range(-(L_non+dy_non), stop=(L_non+dy_non), length=ny+2)  # y-coordinates of density nodes
     
     x2dc, y2dc   = meshgrid(Xc,Yc)                                      # 2d mesh of x- and y-coordinates of density nodes
     x2dVx, y2dVx = meshgrid(Xv,Yc)                                      # 2d mesh of x- and y-coordinates of velocity nodes in x-direction
@@ -276,13 +290,13 @@ function conservative2D_ve()
     Vx        .= Vx0.*ones(nx + 1,ny + 2)                               # initial velocity in x-direction
     Vx[1,:]   .= Vx0 
     Vx[end,:] .= Vx0
-    #locX      = 0.0                                                     # x-coordinate of circle
-    #locY      = -0.35*Ly                                                # y-coordinate of circle
-    #diam      = 0.2*Lx                                                  # diameter of circle
-    #radrho    .= sqrt.((x2dc .-locX).^2.0 .+ (y2dc .-locY).^2.0)        # radius of circle
-    #radVx     .= sqrt.((x2dVx.-locX).^2.0 .+ (y2dVx.-locY).^2.0)        # radius of circle
-    #radVy     .= sqrt.((x2dVy.-locX).^2.0 .+ (y2dVy.-locY).^2.0)        # radius of circle
-    #radμc     .= sqrt.((x2dμc.-locX).^2.0 .+ (y2dμc.-locY).^2.0)        # radius of circle
+    locX      = 0.0                                                     # x-coordinate of circle
+    locY      = -0.35*Ly                                                # y-coordinate of circle
+    diam      = 0.2*Lx                                                  # diameter of circle
+    radrho    .= sqrt.((x2dc .-locX).^2.0 .+ (y2dc .-locY).^2.0)        # radius of circle
+    radVx     .= sqrt.((x2dVx.-locX).^2.0 .+ (y2dVx.-locY).^2.0)        # radius of circle
+    radVy     .= sqrt.((x2dVy.-locX).^2.0 .+ (y2dVy.-locY).^2.0)        # radius of circle
+    radμc     .= sqrt.((x2dμc.-locX).^2.0 .+ (y2dμc.-locY).^2.0)        # radius of circle
     Xp        = [-1.0/2.0, -1.0/2.0, -0.3, -1.0/8.0, -0.01, -0.01, 0.01, 0.01, 1.0/8.0, 0.3, 1.0/2.0, 1.0/2.0].*Lx          # x-coordinates of polygon
     Yp        = [-1.0/2.0, -1.0/5.0, -1.0/5.0, -0.1, -0.15,  -0.28, -0.28, -0.15,  -0.1, -1.0/5.0, -1.0/5.0, -1.0/2.0].*Ly  # y-coordinates of polygon
     Xp_flat   = [-1.0/1.9, -1.0/2.0,  1.0/2.0, 1.0/1.9].*Lx          # x-coordinates of polygon, 1.0/1.9 damit Ränder mit zum Polygon gehören und nicht Luft sind
@@ -327,25 +341,6 @@ function conservative2D_ve()
     x_circ_ind = []
     y_circ_ind = []
 
-    #=
-    for y= 2:size(maskrho_air)[1] - 1
-        for x = 2:size(maskrho_air)[2] - 1
-            if (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x - 1, y]) == 1.0)
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x + 1, y]) == 1.0 )
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x, y - 1]) == 1.0)
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            elseif (maskrho_air[x, y] == 0.0 && abs(maskrho_air[x, y] - maskrho_air[x, y + 1]) == 1.0)
-                push!(x_circ_ind, x)
-                push!(y_circ_ind, y)
-            end
-        end
-    end=#
-
     for y in 2:size(maskrho_closedchamber_air)[1] - 1, x in 2:size(maskrho_closedchamber_air)[2] - 1
         if (maskrho_closedchamber_air[x, y] == 0.0 && abs(maskrho_closedchamber_air[x, y] - maskrho_closedchamber_air[x - 1, y]) == 1.0)
             push!(x_circ_ind, x)
@@ -364,62 +359,26 @@ function conservative2D_ve()
 
 
     # Initial conditions
-    #@. β      += beta_air * (maskrho_air == 1.0) + beta_solid * (maskrho_solid == 1.0)                  # initial viscosity distribution  
     @. β      = βa_non * (maskrho_closedchamber_air == 1.0) + βs_non * (maskrho_closedchamber_solid == 1.0)                  # initial viscosity distribution  
 
-    #P         .= (P_non.*exp.(-g_non.*(y2dc_non[1:end-1, 1:end-1].+1.0./5.0.*L_non).*M_non./T_non./R_non)) .* maskrho_closedchamber_air .+ reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2)*dy_non,dims=2), dims=2)                                # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
+    P         .= (P_non.*exp.(-g_non.*(y2dc_non.+1.0./5.0.*L_non).*M_non./T_non./R_non)) .* maskrho_closedchamber_air .+ reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2).*dy_non,dims=2), dims=2)                                # barometric setting atmosphere: P = P0*exp(-(g*(h-h0)*M)/(T*R)) M: Mass density of air, T: Temperature, R: Gas constant, h: height, P0: Pressure at sea level
+    rho       .= ρa_non .* maskrho_closedchamber_air .+ ρs_non .* maskrho_closedchamber_solid                         # equation of state for density depending on pressure
+    rho[radrho .< diam ./ 2.0] .= ρa_non.+ρc_non                                                          # initial density in the circle
+    #rho[inpolygon(x2dc,y2dc,Xp_flat,Yp_flat) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= ρa_non.+ ρc_non          # initial density of the conduit overlapping with the circular chamber (so in the chamber)
+    #rho[inpolygon(x2dc,y2dc,Xp_flat,Yp_flat) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= .-0.0 .* (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.15.*L_non).*ρc_non./(-0.15.-(locY.+diam./2.0)).+ρa_non    # initial density in the conduit
 
-    #rho       .= (rho0 .* P) ./ P0 .* maskrho_air .+ rho_solid .* maskrho_solid                         # equation of state for density depending on pressure
-    rho       .= (rho0 .* P) ./ P0 .* maskrho_closedchamber_air .+ rho_solid .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
-    rho       .= ρa_non .* maskrho_closedchamber_air .+ ρs_non .* maskrho_closedchamber_solid #maskrho_solid                         # equation of state for density depending on pressure
-    
-    #rho[radrho .< diam ./ 2.0] .= rho0 .+ drho                                                          # initial density in the circle
+    #P .+= reverse(cumsum(ρs_non*g_non.*reverse(maskrho_solid, dims=2)*dx_non,dims=2), dims=2)
+    #P .= P_non .+ exp.((.-50.0 .* Xc_non.^2.0) .+ (.-50.0 .* Yc_non'.^2.0))          # initial pressure distribution
 
-    #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.< locY.+diam./2.0] .= rho0#.+drho          # initial density of the conduit overlapping with the circular chamber (so in the chamber)
-    #rho[inpolygon(x2dc,y2dc,Xp2,Yp2) .== 1.0 .&& y2dc.>=locY.+diam./2.0] .= (y2dc[inpolygon(x2dc,y2dc,Xp2,Yp2).==1.0 .&& y2dc.>=locY.+diam./2.0].+0.15.*Ly).*drho./(-0.15.-(locY.+diam./2.0)).+rho0    # initial density in the conduit
-
-
-    # Setting up lithostatic pressure
-    #maskrho_solid_and_chamber  = zeros(Float64, nx + 2, ny + 2)
-    #maskrho_conduit            = zeros(Float64, nx + 2, ny + 2)
-    #maskrho_solid_and_chamber .= 1.0 .* (rho .>= drho)
-    #maskrho_conduit .= inpolygon(x2dc,y2dc,Xp2,Yp2)
-    #test = maskrho_solid_and_chamber .+ maskrho_conduit
-    #test[test .== 2.0] .= 1.0
-
-    #P .+= reverse(cumsum(ρs_non.*g_non.*reverse(maskrho_solid, dims=2)*dx_non,dims=2), dims=2)
-
-    P .= P_non .+ exp.((.-50.0 .* Xc_non[1:end-1].^2.0) .+ (.-50.0 .* Yc_non[1:end-1]'.^2.0))          # initial pressure distribution
-
-    # y2dc_solid = coordinates for solid part
-    #y2dc_solid = abs.(y2dc) .* maskrho_solid_and_chamber
-    # get indices of topography (solid-air boundary)
-    #topoindex_x = [x for x in 2:nx+1]
-    #topoindex_y = [findlast(x -> x != 0, maskrho_solid_and_chamber[i,:]) + 1 for i in 2:nx+1] ### hier scheint noch ein bug zu sein: vergleiche depth und rho!!!!
-    # get the depth difference from coordinate difference between topo and bottom
-    #depth_difference = [(abs(y2dc[2,2]) - abs(y2dc[topoindex_x[i], topoindex_y[i]])) for i = eachindex(topoindex_x)]
-    # initialize depth array with coordinate array
-    #depth = y2dc_solid
-    # create arrays with range from max depth at bottom to 0.0 with dx difference between each point
-    #depth_array = [Array(range(depth_difference[i], stop=0.0, length=topoindex_y[i]-2)) for i in eachindex(depth_difference)]
-    # set depth array with depth range values
-    #for i=2:nx+1 depth[i, 2:size(depth_array[i-1])[1]+1] = depth_array[i-1][1:end] end
-    #P         .+= (rho .* g .* depth)                                                               # equation of state for pressure depending on density
-
-    #P[radrho .< diam ./ 2.0]         .= (P0 .* rho[radrho .< diam ./ 2.0]) ./ rho0 #.+ (rho[radrho .< diam ./ 2.0] .* g .* depth[radrho .< diam ./ 2.0])#P0 ./ rho0 .* rho
+    P[radrho .< diam ./ 2.0]         .= (P_non .* rho[radrho .< diam ./ 2.0]) ./ ρa_non #.+ (rho[radrho .< diam ./ 2.0] .* g .* depth[radrho .< diam ./ 2.0])#P0 ./ rho0 .* rho
     #P         .+=(P0 .+  (1.0 ./ beta) .* log.(rho ./ rho_solid)) .* maskrho_solid
 
 
     # Initial parameter matrices for both phases
-    #@. η += eta_air * (maskrho_air[2:end-1, 2:end-1] == 1.0) + eta_solid * (maskrho_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
-    #@. μ += mu_air * (maskrho_air[2:end-1, 2:end-1] == 1.0) + mu_solid * (maskrho_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
-    
     @. η += ηa_non * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + ηs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)     # initial viscosity distribution
     @. μ += μa_non * (maskrho_closedchamber_air[2:end-1, 2:end-1] == 1.0) + μs_non * (maskrho_closedchamber_solid[2:end-1, 2:end-1] == 1.0)       # initial viscosity distribution
 
-    #@. η_c += eta_air * (maskμc_air == 1.0) + eta_solid * (maskμc_solid == 1.0)   # initial viscosity distribution for corner nodes
     @. η_c += ηa_non * (maskμc_closedchamber_air == 1.0) + ηs_non * (maskμc_closedchamber_solid == 1.0)   # initial viscosity distribution for corner nodes
-    #@. μ_c += mu_air * (maskμc_air == 1.0) + mu_solid * (maskμc_solid == 1.0)     # initial viscosity distribution for corner nodes
     @. μ_c += μa_non * (maskμc_closedchamber_air == 1.0) + μs_non * (maskμc_closedchamber_solid == 1.0)     # initial viscosity distribution for corner nodes
 
     # Inital plot 
@@ -438,7 +397,7 @@ function conservative2D_ve()
     V = av_x(Vy)
     data_plt = sqrt(U.^2.0 .+ V.^2.0)
     
-    p1 = heatmap!(ax, x2dc, y2dc, P_dim, shading=false, colormap=Reverse(:roma))
+    p1 = heatmap!(ax, Xc, Yc, P_dim, colormap=Reverse(:roma))
     #p1 = heatmap!(ax, x2dc, y2dc , data_plt, shading=false, colorrange=(0.0, 350.0), colormap=Reverse(:roma))
     #p1 = heatmap!(ax, x2dc, y2dc , rho, shading=false, colormap=Reverse(:roma))#, colorrange=(P0, P0*2))
     #Colorbar(fig[1, 2], p1, label="Velocity", labelsize=25, ticklabelsize=25)
@@ -510,12 +469,8 @@ function conservative2D_ve()
             divV         .= diff(Vx[:,2:end-1],dims=1)./dx_non .+ diff(Vy[2:end-1,:],dims=2)./dy_non                                             # divergence of velocity
             Exx          .= diff(Vx[:,2:end-1],dims=1)./dx_non .- 1.0./3.0.*divV                                                               # strain-rate in x-direction
             Eyy          .= diff(Vy[2:end-1,:],dims=2)./dy_non .- 1.0./3.0.*divV                                                               # strain-rate in y-direction
-            Ezz          .=                                    .- 1.0./3.0.*divV                                                                      # strain-rate in z-direction
-            Exy          .= 0.5.*(diff(Vy,dims=1)./dx_non .+ diff(Vx,dims=2)./dy_non)                                                             # shear strain-rate in xy-direction
-            Sxx          .= (.-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (Exx .+ ((Sxx_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))) #.* maskrho_solid[2:end-1, 2:end-1] #.*μ.*  Exx .- (μ   ./ η) .*   (Sxx_old .+ P[2:end-1,2:end-1])                                                                          # stress in x-direction
-            Syy          .= (.-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (Eyy .+ ((Syy_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))) #.* maskrho_solid[2:end-1, 2:end-1] #.*μ.*  Eyy .- (μ   ./ η) .*   (Syy_old .+ P[2:end-1,2:end-1])                                             # stress in y-direction
-            Sxy          .= (                        2.0 .* (1.0 ./ ((1.0 ./ η_c) .+ (1.0 ./ (μ_c .* dt)))) .* (Exy .+ (Sxy_old                          ./ (2.0 .* μ_c .* dt)))) #.* maskμc_solid #.*μ_c.*Exy .- (μ_c ./ η_c) .* (Sxy_old .+ av_xy(P))                                                  # stress in xy-direction
-            Szz          .= (.-P[2:end-1,2:end-1] .+ 2.0 .* (1.0 ./ ((1.0 ./ η) .+ (1.0 ./ (μ .* dt)))) .* (Ezz .+ ((Szz_old .+ P_old[2:end-1, 2:end-1]) ./ (2.0 .* μ .* dt)))) #.* maskrho_solid[2:end-1, 2:end-1] #μ.*  Ezz .- (μ   ./ η) .*   (Szz_old .+ P[2:end-1,2:end-1])                                             # stress in z-direction
+            Exy          .= 0.5.*(diff(Vy,dims=1)./dx_non .+ diff(Vx,dims=2)./dy_non) 
+            Sxx, Syy, Sxy = update_totalstresses_v(Sxx, Syy, Sxy, P, η, η_c, Exx, Eyy, Exy)            
             #Sxx[10, 10]                        = (t_non - t0_non >= 0.0) * (-2.0 * a * (t_non - t0_non) * exp(-a * (t_non - t0_non)^2.0))
             #Syy[10, 10]                        = (t_non - t0_non >= 0.0) * (-2.0 * a * (t_non - t0_non) * exp(-a * (t_non - t0_non)^2.0))
             #Sxy[10, 10]                        = (t_non - t0_non >= 0.0) * (-2.0 * a * (t_non - t0_non) * exp(-a * (t_non - t0_non)^2.0))
@@ -624,9 +579,9 @@ function conservative2D_ve()
 
             data_plt = sqrt.(U.^2.0 .+ V.^2.0)
 
-            hm = heatmap!(ax1, x2dc, y2dc, P_dim, shading=false,)# colorrange=(P0, P0*2))
+            hm = heatmap!(ax1, Xc, Yc, P_dim)# colorrange=(P0, P0*2))
             #hm = heatmap!(ax1, X[2:end-1, 2:end-1], Y[2:end-1, 2:end-1], data_plt[2:end-1, 2:end-1], shading=false, colormap=Reverse(:roma))#, colorrange=(0.0, 0.1),)
-            hm2 = heatmap!(ax2, X[2:end-1, 2:end-1], Y[2:end-1, 2:end-1], data_plt[2:end-1, 2:end-1], shading=false, colormap=Reverse(:roma))#, colorrange=(0.0, 0.01),)
+            hm2 = heatmap!(ax2, Xc[2:end-1], Yc[2:end-1], data_plt[2:end-1, 2:end-1], colormap=Reverse(:roma))#, colorrange=(0.0, 0.01),)
             Colorbar(fig1[1,2],  hm, label="Pressure", labelsize=25, ticklabelsize=25)
             #Colorbar(fig1[1,2],  hm, label="Velocity", labelsize=25, ticklabelsize=25)
             Colorbar(fig1[2,2],  hm2, label="Velocity", labelsize=25, ticklabelsize=25)

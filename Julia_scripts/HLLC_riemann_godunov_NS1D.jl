@@ -130,12 +130,14 @@ function shock_riemann_godunov()
     U = zeros(eltype(γ), 3, nx + 2)
     A = zeros(eltype(γ), 3, 3)
     F = zeros(eltype(γ), 3, nx + 1)
+    F_0 = zeros(3)
+
 
     # Initial conditions
     U[1, 1:div(nx, 2)] .= 1.0           # Density left side
     U[3, 1:div(nx, 2)] .= 1.0           # Pressure left side
-    U[1, div(nx, 2)+1:end] .= 0.125     # Density right side
-    U[3, div(nx, 2)+1:end] .= 0.1       # Pressure right side
+    U[1, div(nx, 2):end] .= 0.125     # Density right side
+    U[3, div(nx, 2):end] .= 0.1       # Pressure right side
 
     # Analytical solution 
     problem = ShockTubeProblem(
@@ -173,7 +175,9 @@ function shock_riemann_godunov()
             A[1, :] .= [U_0[2], U_0[1], 0.0]
             A[2, :] .= [0.0, U_0[2], 1.0 ./ U_0[1]]
             A[3, :] .= [0.0, γ .* U_0[3], U_0[2]]
-            F[:, i] .= A * U_0
+            F_0[:, i] .= A * U_0
+
+            F[:, i] .= F_0
         end
 
         # Godunov method
