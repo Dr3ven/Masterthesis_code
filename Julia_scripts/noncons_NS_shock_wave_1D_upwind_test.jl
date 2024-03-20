@@ -38,13 +38,13 @@ function shock_wave1D_up_test()
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 1000 
+    divisor = 10000 
     plotlegend = false
 
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 140000                             # number of time steps
+    nt = 1400000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -125,7 +125,7 @@ function shock_wave1D_up_test()
         ρ[2:end-1] .= ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
         ρ_t_av .= (ρ .+ ρ_old) .* 0.5
         
-        ρ[1] = ρ[2]
+        #ρ[1] = ρ[2]
         ρ[end] = ρ[end-1]
 
         # Velocity formulation
@@ -149,7 +149,7 @@ function shock_wave1D_up_test()
        
         # Velocity formulation
         EdρVxdx.= .-E[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
+        VxdPdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(P), dims=1) ./ dx
         PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
         ρVxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
         E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
@@ -196,7 +196,5 @@ function shock_wave1D_up_test()
                 display(fig2)
             end
         end
-        
     end
-    
 end

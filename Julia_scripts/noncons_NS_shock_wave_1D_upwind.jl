@@ -56,6 +56,7 @@ function shock_wave1D_up()
     Vx_old = zeros(nx + 1)
     Mx = zeros(nx + 1)
     E = zeros(nx)
+    E_old = zeros(nx)
     Vxdρdx = zeros(nx - 2)
     ρdVxdt = zeros(nx - 2)
     Vxdρdt = zeros(nx - 1)
@@ -81,15 +82,7 @@ function shock_wave1D_up()
     xc_vec = Array(xc)
     xv_vec = Array(xv)
 
-    # Analytical solution 
-    problem = ShockTubeProblem(
-                geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
-                left_state = (ρ = 1.0, u = 0.0, p = 1.0),
-                right_state = (ρ = 0.125, u = 0.0, p = 0.1),
-                t = 0.14, γ = γ)
-    positions, regions, values = solve(problem, xc);
-    e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
-
+    
     linplots = []
 
     # Initial plotting
@@ -107,14 +100,15 @@ function shock_wave1D_up()
     #display(fig)
 
     for i = 1:nt
+        t += dt
+
         ρ_old .= ρ
         Vx_old .= Vx
+        E_old .= E
         
         Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx)
         ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx # hier
-        ρ[2:end-1] .= ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
-
-        P .= (γ .- 1.0) .* (E .- 0.5 .* ρ.* av_x(Vx).^2)
+        ρ[2:end-1] .= ρ_old[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
 
         dρ = av_x(ρ .- ρ_old)
         ρ_v = extend_vertices(av_x(ρ))
@@ -122,36 +116,51 @@ function shock_wave1D_up()
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx # hier
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx)
-        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt .* dt
+        Vx[2:end-1] .= Vx_old[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt .* dt
         
-        VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx) # hier
+        VxdPdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(P), dims=1) ./ dx # hier
         PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
         VxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
         EdVxdx .= .-E[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        E[2:end-1] .= E[2:end-1] .+ VxdPdx .* dt .+ PdVxdx .* dt .+ VxdEdx .* dt .+ EdVxdx .* dt
+        E[2:end-1] .= E_old[2:end-1] .+ VxdPdx .* dt .+ PdVxdx .* dt .+ VxdEdx .* dt .+ EdVxdx .* dt
         
+        P .= (γ .- 1.0) .* (E .- 0.5 .* ρ.* av_x(Vx).^2)
+
         e = P ./ (γ - 1.0) ./ ρ
 
-        t += dt
+        # Analytical solution 
+        problem = ShockTubeProblem(
+            geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
+            left_state = (ρ = 1.0, u = 0.0, p = 1.0),
+            right_state = (ρ = 0.125, u = 0.0, p = 0.1),
+            t = t, γ = γ)
+        positions, regions, values = solve(problem, xc);
+        e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
+
+
         if i % divisor == 0
-            #fig2 = Figure(size=(1000, 800))
-            #ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            #ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            #ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            #ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            fig2 = Figure(size=(1000, 800))
+            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             opts = (;linewidth = 2, color = :red)
             lines!(ax4, xc, values.ρ; opts...)
             lines!(ax2, xc, values.u; opts...)
             lines!(ax1, xc, values.p; opts...)
             lines!(ax3, xc, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
+            scatter!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
+            scatter!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             lines!(ax3, xc_vec, e)
+            scatter!(ax3, xc_vec, e)
             lines!(ax4, xc_vec, ρ)
+            scatter!(ax4, xc_vec, ρ)
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
-            #display(fig2)
+            display(fig2)
             if i % nt == 0
                 #Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
                 #rowsize!(fig2.layout, 3, 40)
@@ -160,8 +169,8 @@ function shock_wave1D_up()
             end
         end
     end
-    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    rowsize!(fig.layout, 3, 40)
+    #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    #rowsize!(fig.layout, 3, 40)
     #save("/home/nils/Masterthesis_code/Plots/Navier-Stokes_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_time_evolution.png", fig)
-    display(fig)
+    #display(fig)
 end
