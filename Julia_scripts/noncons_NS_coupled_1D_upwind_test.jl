@@ -38,7 +38,7 @@ function coupled_wave1D_up()
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 10000 
+    divisor = 10 
     plotlegend = false
 
     # Numerics
@@ -51,6 +51,7 @@ function coupled_wave1D_up()
     xv = 0:dx:Lx        # grid vertices in x-direction
 
     # Allocations
+    β = zeros(nx)
     ρ = ones(nx)
     ρ_old = zeros(nx)
     ρ_t_av = zeros(nx)
@@ -77,13 +78,23 @@ function coupled_wave1D_up()
     ρVxdEdx = zeros(nx - 2)
 
     masksolid = ones(nx)
+    maskair = masksolid
+    maskair[1:Int((33/100)*nx)] .= 0.0
     masksolid[Int((34/100)*nx):end] .= 0.0
+    
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
-    P[1:Int((33/100)*nx)] .= 1.0e5 
+    depth_solid = 33:-1:1
+    depth_air = 1:1:67
+    # IC for solid
+    P[1:Int((33/100)*nx)] .= P0 .+ (ρ[1:Int((33/100)*nx)] .* 9.81 .* depth_solid)
     ρ[1:Int((33/100)*nx)] .= 3000.0
-    P[Int((66/100)*nx):end] .= 1.0e4
-    ρ[Int((66/100)*nx):end] .= 0.125
+    # IC for chamber
+    P[Int((34/100)*nx):end] .= P0 .* exp.(-9.81 .* depth_air .* 0.028 ./ 288.0 ./ 8.314)
+    ρ[Int((34/100)*nx):65] .= 2800.0 ./ P0 .* P[Int((34/100)*nx):65]
+    # IC for air
+    ρ[Int((66/100)*nx):end] .= 1.225 ./ P0 .* P[Int((66/100)*nx):end]
+    P[Int((66/100)*nx):end] .= (P[Int((66/100)*nx):end] .* ρ[Int((66/100)*nx):end]) ./ 1.225
     c = sqrt(K / ρ0)                # speed of sound
     E .= P ./ ((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
@@ -120,15 +131,16 @@ function coupled_wave1D_up()
     display(fig)
 
     for i = 1:nt
+        β .= 1.0 ./ P
         ρ_old .= ρ
         Mx_old .= Mx
         P_old .= P
         c_var_s = sqrt(K ./ maximum(ρ[1:33]))
         c_var_a = sqrt(K ./ maximum(ρ[34:end]))
 
-        Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx)
-        ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        ρ[2:end-1] .= ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt
+        Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx) .* maskair[2:end-1]
+        ρdVxdt .= .-ρ[2:end-1] .* (diff(Vx[2:end-1], dims=1) ./ dx) .* maskair[2:end-1]
+        ρ[2:end-1] .= (ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt ) 
         ρ_t_av .= (ρ .+ ρ_old) .* 0.5
 
         ρ[1] = ρ[2]
@@ -155,13 +167,13 @@ function coupled_wave1D_up()
        
         # Velocity formulation
         EdρVxdx.= .-E[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        VxdPdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, P, dx)
+        VxdPdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(P), dims=1) ./ dx
         PdVxdx .= .-P[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
         ρVxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
         E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
-        #E[1] = E[2]    # lassen die simulation explodieren wenn Rand erreicht wird
-        #E[end] = E[end-1]
+        # E[1] = E[2]    # lassen die simulation explodieren wenn Rand erreicht wird
+        # E[end] = E[end-1]
 
         # Momentum formulation
         # EdρVxdx.= .-E[2:end-1] .* upwind_center(Vx, av_x(Mx), dx)
@@ -171,7 +183,8 @@ function coupled_wave1D_up()
         # E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
         P[Int((34/100)*nx):end] .= (γ .- 1.0) .* (E[Int((34/100)*nx):end] .- 0.5 .* ρ[Int((34/100)*nx):end] .* (av_x(Mx)[Int((34/100)*nx):end] ./ ρ[Int((34/100)*nx):end]).^2)
-        P[1:Int((33/100)*nx)] .= ρ[1:Int((33/100)*nx)] .* c.^2.0
+        #P[1:Int((33/100)*nx)] .= ρ[1:Int((33/100)*nx)] .* c.^2.0
+        P[1:Int((33/100)*nx)] .= ((1.0 ./ β[1:Int((33/100)*nx)]) .* log.(ρ[1:Int((33/100)*nx)] ./ 2800.0) .+ P[1:Int((33/100)*nx)])
 
         e = P ./ (γ - 1.0) ./ ρ
 
@@ -188,7 +201,7 @@ function coupled_wave1D_up()
             ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=8))")#, limits=(nothing, nothing, -0.25, 0.25))
             ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
             ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain", limits=(nothing, nothing,-50.0, 3050.0))
+            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing,-50.0, 3050.0))
             #opts = (;linewidth = 2, color = :red)
             #lines!(ax4, xc, values.ρ; opts...)
             #lines!(ax2, xc, values.u; opts...)
