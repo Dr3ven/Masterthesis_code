@@ -10,14 +10,14 @@ function acoustic_wave()
     P0 = 1.0e6                          # initial pressure at all points
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
-    A = 10.0                          # gaussian maximum amplitude
-    divisor = 200
+    A = 100.0                          # gaussian maximum amplitude
+    divisor = 1000
 
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 1000                             # number of time steps
-    dt = 1.0e-7 #dx / (c * 4.0)                 # time step size
+    nt = 100000                             # number of time steps
+    dt = 1.0e-8 #dx / (c * 4.0)                 # time step size
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -44,12 +44,12 @@ function acoustic_wave()
     # Initial plotting
     fig = Figure(size=(600, 800))
     ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
-    ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    ax2 = Axis(fig[2,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     l0 = lines!(ax1, xc_vec, P, label="time = 0")
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
-    #display(fig)
+    display(fig)
 
     for i = 1:nt
         t += dt
@@ -59,16 +59,17 @@ function acoustic_wave()
         Vx[2:end-1] .= Vx[2:end-1] .+ dVxdt .* dt
         
         if i % divisor == 0
-            #fig2 = Figure()
-            #ax2 = Axis(fig2[1,1], title="time = $t", limits=(nothing, nothing, -0.01, 1.1))
+            fig2 = Figure()
+            ax1 = Axis(fig2[1,1], title="Pressure")#, limits=(nothing, nothing, -0.01, 1.1))
+            ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.01, 1.1))
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec, Vx)
-            display(fig)
+            display(fig2)
         end
     end
-    Legend(fig[2,1], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=2, tellhight = false, orientation=:horizontal)
-    rowsize!(fig.layout, 2, 60)
+    #Legend(fig[2,1], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=2, tellhight = false, orientation=:horizontal)
+    #rowsize!(fig.layout, 2, 60)
     #save("/home/nils/Masterthesis_code/Plots/Navier-Stokes_acoustic_wave/normal_acoustic_wave/normal_acoustic_wave.png", fig)
-    display(fig)
+    #display(fig)
 end
