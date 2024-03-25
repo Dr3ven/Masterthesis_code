@@ -2,7 +2,7 @@ using CairoMakie
 using SodShockTube
 
 function av_x(B)
-    A = 0.5 .* (B[2:end,:] .+ B[1:end-1,:])
+    A = 0.5 .* (B[2:end] .+ B[1:end-1])
 end
 
 function upwind(u, G, dx)
@@ -31,20 +31,22 @@ function coupled_wave1D_up()
     γ = 1.4                                # adiabatic index/ratio of specific heats
     K = 1.0e10                             # shear modulus
     ρ0 = 3000.0                          # initial density at all points
-    P0 = 1.0e5                          # initial pressure at all points
+    P0_a = 1.0e5                          # initial pressure at all points
+    P0_s = 1.0e6
+    P0_c = P0_s + 1.0e7
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 10 
+    divisor = 100 
     plotlegend = false
 
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 500000                             # number of time steps
+    nt = 700000                             # number of time steps
 
     # Grid definition
     xc = 0:dx:Lx-dx        # grid nodes in x-direction
@@ -55,9 +57,10 @@ function coupled_wave1D_up()
     ρ = ones(nx)
     ρ_old = zeros(nx)
     ρ_t_av = zeros(nx)
-    P = ones(nx) .* P0
+    P = ones(nx)
     P_old = ones(nx)
     Vx = zeros(nx + 1)
+
     #Vx_old = zeros(nx + 1)
     #Vx_t_av = zeros(nx + 1)
     Mx = zeros(nx + 1)
@@ -84,22 +87,28 @@ function coupled_wave1D_up()
     
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
-    depth_solid = 33:-1:1
-    depth_air = 1:1:67
+    depth_solid = 67:-1:1
+    depth_air = 1:1:35
     # IC for solid
-    P[1:Int((33/100)*nx)] .= P0 .+ (ρ[1:Int((33/100)*nx)] .* 9.81 .* depth_solid)
-    ρ[1:Int((33/100)*nx)] .= 3000.0
+    # Constant solid density ρ = 3000.0
+    # Lithosstatic pressure P = P0 + ρgh
+    ρ[1:Int((33/100)*nx)] .= 2800.0
+    P[1:Int((33/100)*nx)] .= P0_s #.+ (ρ[1:Int((33/100)*nx)] .* 9.81 .* reverse(Vector(34:1:66)))
     # IC for chamber
-    P[Int((34/100)*nx):end] .= P0 .* exp.(-9.81 .* depth_air .* 0.028 ./ 288.0 ./ 8.314)
-    ρ[Int((34/100)*nx):65] .= 2800.0 ./ P0 .* P[Int((34/100)*nx):65]
+    # Constant chamber ideal gas density ρ = 2800.0 
+    # Ideal gas pressure P = P0 *  ρ / ρ0
+    ρ[Int((34/100)*nx):65] .= 2800.0 
+    P[Int((34/100)*nx):65] .= P0_c #.* ρ[Int((34/100)*nx):65] ./ 2800 
     # IC for air
-    ρ[Int((66/100)*nx):end] .= 1.225 ./ P0 .* P[Int((66/100)*nx):end]
-    P[Int((66/100)*nx):end] .= (P[Int((66/100)*nx):end] .* ρ[Int((66/100)*nx):end]) ./ 1.225
+    # Constant ideal gas density ρ = 1.225
+    # Ideal gas pressure P = P0 * exp(-ghM/RT)
+    ρ[Int((66/100)*nx):end] .= 1.225
+    P[Int((66/100)*nx):end] .= P0_a .* exp.(-9.81 .* depth_air .* 0.028 ./ 288.0 ./ 8.314)
     c = sqrt(K / ρ0)                # speed of sound
     E .= P ./ ((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
 
-    dt = 1.0e-6#8 #dx / (c * 4.0)                      # time step size
+    dt = 1.0e-4#8 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
     xc_vec = Array(xc)
@@ -140,16 +149,17 @@ function coupled_wave1D_up()
 
         Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx) .* maskair[2:end-1]
         ρdVxdt .= .-ρ[2:end-1] .* (diff(Vx[2:end-1], dims=1) ./ dx) .* maskair[2:end-1]
-        ρ[2:end-1] .= (ρ[2:end-1] .+ Vxdρdx .* dt .+ ρdVxdt .* dt ) 
+        dρ = Vxdρdx .* dt .+ ρdVxdt .* dt
+        ρ[2:end-1] .= ρ[2:end-1] .+ dρ
         ρ_t_av .= (ρ .+ ρ_old) .* 0.5
 
         ρ[1] = ρ[2]
         ρ[end] = ρ[end-1]
         
         # Velocity formulation
-        dρ = av_x(ρ .- ρ_old)
+        dρ_t = av_x(ρ .- ρ_old)
         ρ_v = extend_vertices(av_x(ρ))
-        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (dρ ./ dt)
+        Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (dρ_t ./ dt)
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
         VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx)
@@ -182,9 +192,26 @@ function coupled_wave1D_up()
         # ρVxdEdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, E, dx)
         # E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
+        if any(ρ .< 0.0)
+            println("Negative density at time $t")
+            @show findall(ρ .< 0.0)
+            break
+        elseif any(e .< 0.0)
+            println("Negative energy at time $t")
+            E_ind = findall(E .< 0.0)
+            @show E_ind
+            break
+        elseif any(P .< 0.0)
+            println("Negative pressure at time $t")
+            @show findall(P .< 0.0)
+            break
+        end
+
         P[Int((34/100)*nx):end] .= (γ .- 1.0) .* (E[Int((34/100)*nx):end] .- 0.5 .* ρ[Int((34/100)*nx):end] .* (av_x(Mx)[Int((34/100)*nx):end] ./ ρ[Int((34/100)*nx):end]).^2)
         #P[1:Int((33/100)*nx)] .= ρ[1:Int((33/100)*nx)] .* c.^2.0
-        P[1:Int((33/100)*nx)] .= ((1.0 ./ β[1:Int((33/100)*nx)]) .* log.(ρ[1:Int((33/100)*nx)] ./ 2800.0) .+ P[1:Int((33/100)*nx)])
+        dP = dρ[1:Int((33/100)*nx)] .* c.^2.0
+        P[1:Int((33/100)*nx)] .= dP .+ P[1:Int((33/100)*nx)]
+        #P[1:Int((33/100)*nx)] .= ((1.0 ./ β[1:Int((33/100)*nx)]) .* log.(ρ[1:Int((33/100)*nx)] ./ 2800.0) .+ P[1:Int((33/100)*nx)])
 
         e = P ./ (γ - 1.0) ./ ρ
 

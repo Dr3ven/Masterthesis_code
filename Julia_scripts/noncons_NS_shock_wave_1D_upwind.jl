@@ -82,7 +82,15 @@ function shock_wave1D_up()
     xc_vec = Array(xc)
     xv_vec = Array(xv)
 
-    
+    # Analytical solution 
+    problem = ShockTubeProblem(
+        geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
+        left_state = (ρ = 1.0, u = 0.0, p = 1.0),
+        right_state = (ρ = 0.125, u = 0.0, p = 0.1),
+        t = 0.14, γ = γ)
+    positions, regions, values = solve(problem, xc);
+    e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
+
     linplots = []
 
     # Initial plotting
@@ -129,43 +137,45 @@ function shock_wave1D_up()
         e = P ./ (γ - 1.0) ./ ρ
 
         # Analytical solution 
-        problem = ShockTubeProblem(
-            geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
-            left_state = (ρ = 1.0, u = 0.0, p = 1.0),
-            right_state = (ρ = 0.125, u = 0.0, p = 0.1),
-            t = t, γ = γ)
-        positions, regions, values = solve(problem, xc);
-        e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
+        # problem = ShockTubeProblem(
+        #     geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
+        #     left_state = (ρ = 1.0, u = 0.0, p = 1.0),
+        #     right_state = (ρ = 0.125, u = 0.0, p = 0.1),
+        #     t = t, γ = γ)
+        # positions, regions, values = solve(problem, xc);
+        # e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
 
 
         if i % divisor == 0
-            fig2 = Figure(size=(1000, 800))
-            ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=4))", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            fig2 = Figure(size=(1000, 800), fontsize=20)
+            Label(fig2[1,1:2], "Time =  $(round(t, digits=4))", tellwidth=false, font=:bold ,fontsize=26)
+            ax1 = Axis(fig2[3,1], title="Pressure", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax2 = Axis(fig2[2,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax3 = Axis(fig2[3,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            ax4 = Axis(fig2[2,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             opts = (;linewidth = 2, color = :red)
-            lines!(ax4, xc, values.ρ; opts...)
+            li2 = lines!(ax4, xc, values.ρ; opts...)
             lines!(ax2, xc, values.u; opts...)
             lines!(ax1, xc, values.p; opts...)
             lines!(ax3, xc, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
-            scatter!(ax1, xc_vec, P, label="time = $t")
+            #scatter!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
-            lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
-            scatter!(ax2, xv_vec[2:end-1], Vx[2:end-1])
+            lines!(ax2, xv_vec, Vx)
+            #scatter!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             lines!(ax3, xc_vec, e)
-            scatter!(ax3, xc_vec, e)
+            #scatter!(ax3, xc_vec, e)
             lines!(ax4, xc_vec, ρ)
-            scatter!(ax4, xc_vec, ρ)
+            #scatter!(ax4, xc_vec, ρ)
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
-            display(fig2)
+            #display(fig2)
             if i % nt == 0
-                #Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-                #rowsize!(fig2.layout, 3, 40)
-                #save("/home/nils/Masterthesis_code/Plots/Navier-Stokes_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_vs_analytical.png", fig2)
-                #display(fig2)
+                #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+                Legend(fig2[4,:], [li2, linplots[end]], ["analytical", "numerical"], "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+                rowsize!(fig2.layout, 4, 50)
+                #save("/home/nils/Masterthesis_code/Plots/Nils_Euler-equations_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_vs_analytical_corrected.png", fig2) #time_evolution
+                display(fig2)
             end
         end
     end

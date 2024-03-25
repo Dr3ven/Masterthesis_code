@@ -37,7 +37,7 @@ function sod()
     # Parameters
     Lx = 1.0 #1000.0             # Length of the domain
     Nx = 100           # Number of spatial grid points
-    Nt = 1400; #1400           # Number of time steps
+    Nt = 10000; #1400           # Number of time steps
     dx = Lx / (Nx - 1)   # Spatial grid spacing
     dt = 1e-4           # Temporal grid spacing
     divisor = 280
@@ -99,20 +99,21 @@ function sod()
 
     # Time-stepping loop
     for n in 1:Nt
-        t += dt
 
         # Update density using the continuity equation
         # Note that this specified at the center of a control volume
         # ∂ρ/∂t + ∂(ρu)/∂x = 0
         ρ_v = extend_vertices(average(ρ))
         ρ[2:end-1]      -=   dt * flux_upwind_center(u, ρ.*average(u), dx)
-
+ 
+        ρ[end] = ρ[end-1]
         # update ρu (momentum) using the momentum equation:
         # This is formulated around the vertices of the control volume  
 
         # ∂(m)/∂t + ∂(u*m + P)/∂x = 0
         m[2:end-1]      -=   dt * flux_upwind(u, (m.^2)./ρ_v, dx) + dt/dx.*(P[2:end] - P[1:end-1])
 
+        #m[]
         # update energy 
         # ∂e/∂t + ∂/∂x( (ρu/ρ)(E + P) ) = 0
         E[2:end-1]      -=  dt* flux_upwind_center(u, average(u).*(E + P), dx)
@@ -124,6 +125,17 @@ function sod()
         
         P = (γ - 1.0) .* (E - 0.5*ρ.* u_c.^2)
         e .= P./(γ-1)./ρ
+
+        problem = ShockTubeProblem(
+                    geometry = (0.0, Lx, Lx / 2.0), # left edge, right edge, initial shock location
+                    left_state = (ρ = 1.0, u = 0.0, p = 1.0),#1.0e6),
+                    right_state = (ρ = 0.125, u = 0.0, p = 0.1),# 1.0e5),
+                    t = t, γ = γ)
+        positions, regions, vals = solve(problem, x_c);    
+        e .= P./(γ-1)./ρ
+        e_anal = vals.p./((γ-1).*vals.ρ)
+
+        t += dt
 
         #P = ρ.*c^2.0;
         #P = ρ
@@ -146,28 +158,28 @@ function sod()
         end=#
 
         if n % divisor == 0
-            #fig = Figure(size=(1000,800); fontsize=20)
-            #ax1 = Axis(fig[1,1], title="Density, time = $t")
-            #ax2 = Axis(fig[1,2], title="Velocity")
-            #ax3 = Axis(fig[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
-            #ax4 = Axis(fig[2,2], title="Energy")
+            fig = Figure(size=(1000,800); fontsize=20)
+            ax1 = Axis(fig[1,1], title="Density, time = $t")
+            ax2 = Axis(fig[1,2], title="Velocity")
+            ax3 = Axis(fig[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+            ax4 = Axis(fig[2,2], title="Energy")
             opts = (;linewidth = 2, color = :red)
             li = lines!(ax1, x_c, ρ)
             lines!(ax2, x_c, average(u))
             lines!(ax3, x_c, P)
             lines!(ax4, x_c, e)
             push!(linplots, li)
-            #lines!(ax1, x_c, vals.ρ; opts...)
-            #lines!(ax2, x_c, vals.u; opts...)
-            #lines!(ax3, x_c, vals.p; opts...)
-            #lines!(ax4, x_c, e_anal; opts...)
+            lines!(ax1, x_c, vals.ρ; opts...)
+            lines!(ax2, x_c, vals.u; opts...)
+            lines!(ax3, x_c, vals.p; opts...)
+            lines!(ax4, x_c, e_anal; opts...)
             display(fig)
         end
     end
-    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*Nt, digits=5)), "Total time", tellwidth = false, nbanks=Int(floor((Nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    rowsize!(fig.layout, 3, 60)
-    save("/home/nils/Masterthesis_code/Plots/Boris_sod_shock_code/Time_evolution_sod_shock_staggered.png", fig)
-    display(fig)
+    #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*Nt, digits=5)), "Total time", tellwidth = false, nbanks=Int(floor((Nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    #rowsize!(fig.layout, 3, 60)
+    #save("/home/nils/Masterthesis_code/Plots/Boris_sod_shock_code/Time_evolution_sod_shock_staggered.png", fig)
+    #display(fig)
     #return ρ, u, P, E=#
 end
 

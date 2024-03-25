@@ -219,7 +219,7 @@ function conservative2D()
     
     fig = Figure()
     ax = Axis(fig[1, 1], title="0")
-    p1 = heatmap!(ax, x2dc, y2dc, P, shading=false) # shading("flat"), hold(true)
+    p1 = heatmap!(ax, Xc, Yc, P) # shading("flat"), hold(true)
     Colorbar(fig[1, 2], p1, label="Pressure [Pa]")
     points_XpYp = Point2f[]
     for i in eachindex(Xp)
@@ -354,7 +354,7 @@ function conservative2D()
             data_plt = sqrt.(U.^2 .+ V.^2)
 
             # hm = heatmap!(ax, x2dc, y2dc, P, shading=false, colormap=Reverse(:roma), colorrange=(P0, P0*2))
-            hm = heatmap!(ax, X, Y, data_plt, shading=false, colormap=Reverse(:roma), colorrange=(0.0, 1000.0))
+            hm = heatmap!(ax, Xv, Yv, data_plt, colormap=Reverse(:roma), colorrange=(0.0, 1000.0))
             #Colorbar(fig1[1,2],  hm, label="Pressure [Pa]")
             Colorbar(fig1[1,2],  hm, label="Velocity [m/s]")
             lines!(ax, Xp, Yp, color = :white)

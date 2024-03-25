@@ -86,13 +86,6 @@ function wave_b(; wave=true)
 
         # update ρu (momentum) using the momentum equation:
         # This is formulated around the vertices of the control volume  
-
-        if wave == false
-            P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
-        else
-            P .= ρ.*c.^2.0;
-        end
-
         # ∂(m)/∂t + ∂(u*m + P)/∂x = 0
         #P_v = extend_vertices(average(P))
         m[2:end-1]      .-=   dt .* flux_upwind(u, (m.^2)./ρ_v, dx) .+ (dt./dx) .* diff(P, dims=1)

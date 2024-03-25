@@ -102,7 +102,7 @@ end
 
 extend_vertices(x) = [x[1]; x; x[end]];
 
-function shock_wave1D_god_colloc()
+function shock_god_col()
     # Physics
     Lx = 1.0                           # domain
     γ = 1.4                                # adiabatic index/ratio of specific heats
@@ -121,7 +121,7 @@ function shock_wave1D_god_colloc()
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 1400                             # number of time steps
+    nt = 14000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -144,7 +144,7 @@ function shock_wave1D_god_colloc()
     P[Int((50/100)*nx):end] .= 0.1
     ρ[Int((50/100)*nx):end] .= 0.125
     c = sqrt(K / ρ0)                # speed of sound
-    E .= P./((γ - 1.0)) + 0.5 .* Vx.^2
+    E .= P./((γ - 1.0)) + 0.5 .* ρ .* Vx.^2
     e = P ./ (γ - 1.0) ./ ρ
     
 
@@ -187,28 +187,44 @@ function shock_wave1D_god_colloc()
         # ρ_old .= ρ
         # Vx_old .= Vx
         
-        fρ1 = .-av_x(Vx) .* diff(ρ, dims=1) ./ dx
-        fρ2 = .-av_x(ρ) .* diff(Vx, dims=1) ./ dx 
-        fρ3 = fρ1 .+ fρ2
-        fMx1 = diff(P, dims=1) ./ dx
-        fMx2 = .-av_x(Mx) .* diff(Vx, dims=1) ./ dx
-        fMx3 = .-av_x(Vx) .* diff(Mx, dims=1) ./ dx
-        fMx4 = fMx1 .+ fMx2 .+ fMx3
-        fE1 = .-av_x(Vx) .* diff(P, dims=1) ./ dx
-        fE2 = .-av_x(P) .* diff(Vx, dims=1) ./ dx
-        fE3 = .-av_x(Vx) .* diff(E, dims=1) ./ dx
-        fE4 = .-av_x(E) .* diff(Vx, dims=1) ./ dx
-        fE5 = fE1 .+ fE2 .+ fE3 .+ fE4
-        for i in 1:nx-2
+        # fρ1 = .-av_x(Vx) .* diff(ρ, dims=1) ./ dx
+        # fρ2 = .-av_x(ρ) .* diff(Vx, dims=1) ./ dx 
+        # fρ3 = fρ1 .+ fρ2
+        fρ4 = ρ .* Vx
+
+        fρR .= 0.5 * (ρ[2:end] .+ ρ[1:end-1]) .- (dt ./ dx) .* (fρ4[2:end] .- fρ4[1:end-1])
+        fρL .= 0.5 * (ρ[2:end] .+ ρ[1:end-1]) .- (dt ./ dx) .* (fρ4[2:end] .- fρ4[1:end-1])
+        ρ[2:end-1] .= ρ[2:end-1] .- (dt ./ dx) .* (fρ[2:end] .- fρ[1:end-1])
+
+        # fMx1 = diff(P, dims=1) ./ dx
+        # fMx2 = .-av_x(Mx) .* diff(Vx, dims=1) ./ dx
+        # fMx3 = .-av_x(Vx) .* diff(Mx, dims=1) ./ dx
+        # fMx4 = fMx1 .+ fMx2 .+ fMx3
+        fMx5 = (Mx.^2.0 ./ ρ) + P
+        fMxR .= 0.5 * (Mx[2:end] .+ Mx[1:end-1]) .- (dt ./ dx) .* (fMx5[2:end] .- fMx5[1:end-1])
+        Mx[2:end-1] .= Mx[2:end-1] .- (dt ./ dx) .* (fMx[2:end] .- fMx[1:end-1])
+
+        # fE1 = .-av_x(Vx) .* diff(P, dims=1) ./ dx
+        # fE2 = .-av_x(P) .* diff(Vx, dims=1) ./ dx
+        # fE3 = .-av_x(Vx) .* diff(E, dims=1) ./ dx
+        # fE4 = .-av_x(E) .* diff(Vx, dims=1) ./ dx
+        # fE5 = fE1 .+ fE2 .+ fE3 .+ fE4
+        fE6 = (Mx ./ ρ) .* (E .+ P)
+        fER .= 0.5 * (E[2:end] .+ E[1:end-1]) .- (dt ./ dx) .* (fE6[2:end] .- fE6[1:end-1])
+        E[2:end-1] .= E[2:end-1] .- (dt ./ dx) .* (fE[2:end] .- fE[1:end-1])
+
+        P .= (γ .- 1.0) .* (E .- 0.5 .* ρ .* Vx.^2.0)
+        e = P ./ (γ - 1.0) ./ ρ
+
+
+        #=for i in 1:nx-2
             fρi, fMxi, fEi = riemann_solver_hllc(γ, ρ[i], Vx[i], E[i], ρ[i+1], Vx[i+1], E[i+1], fρ3[i], fρ3[i+1], fMx4[i], fMx4[i+1], fE5[i], fE5[i+1])
             fρ[i] = fρi
             fMx[i] = fMxi
             fE[i]  = fEi
-        end
-        @infiltrate
-        ρ[2:end-1] .= ρ[2:end-1] .- (dt ./ dx) .* (fρ[2:end] .- fρ[1:end-1])
-        Mx[2:end-1] .= Mx[2:end-1] .- (dt ./ dx) .* (fMx[2:end] .- fMx[1:end-1])
-        E[2:end-1] .= E[2:end-1] .- (dt ./ dx) .* (fE[2:end] .- fE[1:end-1])
+        end=#
+        
+
 
         # ρ[2:end-1] .= 0.5 .* (ρ[2:end] .+ ρ[1:end-1]) .+ Vxdρdx .* dt .+ ρdVxdt .* dt
 
@@ -244,17 +260,17 @@ function shock_wave1D_god_colloc()
             lines!(ax3, xc, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
-            lines!(ax2, xc_vec[2:end-1], Vx[2:end-1])
+            lines!(ax2, xc_vec, Vx)
             lines!(ax3, xc_vec, e)
             lines!(ax4, xc_vec, ρ)
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             display(fig2)
             if i % nt == 0
-                Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-                rowsize!(fig2.layout, 3, 40)
+                #Legend(fig2[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+                #rowsize!(fig2.layout, 3, 40)
                 #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_shock_wave\\nonconservative\\Shock_upwind_vs_analytical.png", fig)
-                display(fig2)
+                #display(fig2)
             end
         end
     end

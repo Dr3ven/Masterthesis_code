@@ -74,3 +74,6 @@ Verlauf (was hab ich probiert) ab 05.01.2024
 - renamed all files/codes that are nonconservative to have "noncons_" in the beginning of the file names
 - writing down thesis stuff
 
+20.03.2024
+- assumed constant density in solid with maskair for change of density -> shock wave is inititated from the solid part because of very high pressure (10^10Pa = 10GPa)
+    -> different equation for pressure needed? What should be adjusted to avoid a too high pressure for the solid part? 
