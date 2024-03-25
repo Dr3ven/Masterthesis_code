@@ -18,12 +18,12 @@ function shock_wave1D()
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 280#400000 
+    divisor = 56000#400000 
 
     # Numerics
     nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 14000#2000000                             # number of time steps
+    nt = 140000#2000000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -57,7 +57,7 @@ function shock_wave1D()
     e = P ./ (γ - 1.0) ./ ρ
     #ρ .= P ./ c^2.0                                 # initial density distribution
 
-    dt = 1.0e-4#9 #dx / (c * 4.0)                      # time step size
+    dt = 1.0e-6#9 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
     xc_vec = Array(xc)
@@ -66,11 +66,11 @@ function shock_wave1D()
     linplots = []
 
     # Initial plotting
-    fig = Figure(size=(1000, 800))
-    ax1 = Axis(fig[2,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
-    ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    fig = Figure(size=(1000, 800), fontsize=20)
+    ax1 = Axis(fig[2,1], title="Pressure", ylabel="Pressure", xlabel="Domain")# limits=(nothing, nothing, P0-(A*3/5), P0+A))
+    ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xticklabelsvisible=false, xticksvisible=false)#, limits=(nothing, nothing, -0.25, 0.25))
     ax3 = Axis(fig[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xticklabelsvisible=false, xticksvisible=false)#, limits=(nothing, nothing, -0.25, 0.25))
     l0 = lines!(ax1, xc_vec, P, label="time = 0")
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
@@ -106,23 +106,23 @@ function shock_wave1D()
 
         t += dt
         if i % divisor == 0
-            fig2 = Figure(size=(1000, 800))
-            ax1 = Axis(fig2[2,1], title="Pressure, time = $t")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # fig2 = Figure(size=(1000, 800), fontsize=20)
+            # ax1 = Axis(fig2[2,1], title="Pressure", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
             lines!(ax3, xc_vec, e)
             lines!(ax4, xc_vec, ρ)
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
-            display(fig2)
+            #display(fig2)
         end
     end
     #@infiltrate
-    #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int(floor((nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    #rowsize!(fig.layout, 3, 40)
-    #save("../Plots/Navier-Stokes_shock_wave/all_terms_sod_shock_setup/All_in_one.png", fig)
-    #display(fig)
+    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int(floor((nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    rowsize!(fig.layout, 3, 40)
+    save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_shock_wave/all_terms_sod_shock_setup/3_in_one_shock_wave.png", fig)
+    display(fig)
 end
