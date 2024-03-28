@@ -183,7 +183,7 @@ function coupled_wave1D_up()
         E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
         # E[1] = E[2]    # lassen die simulation explodieren wenn Rand erreicht wird
-        # E[end] = E[end-1]
+        E[end] = 0#E[end-1]
 
         # Momentum formulation
         # EdρVxdx.= .-E[2:end-1] .* upwind_center(Vx, av_x(Mx), dx)
@@ -193,25 +193,32 @@ function coupled_wave1D_up()
         # E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
         if any(ρ .< 0.0)
-            println("Negative density at time $t")
-            @show findall(ρ .< 0.0)
-            break
+            #println("Negative density at time $t")
+            #@show findall(x-> x .< 0.0, ρ)
+            #break
         elseif any(e .< 0.0)
-            println("Negative energy at time $t")
-            E_ind = findall(E .< 0.0)
-            @show E_ind
-            break
+            #println("Negative energy at time $t")
+            #E_ind = findall(x-> x .< 0.0, E)
+            #@show E[E_ind]
+            #return E
         elseif any(P .< 0.0)
             println("Negative pressure at time $t")
-            @show findall(P .< 0.0)
-            break
+            @show b = findall(x-> x .< 0.0, P)
+            return P
+            #break
         end
 
-        P[Int((34/100)*nx):end] .= (γ .- 1.0) .* (E[Int((34/100)*nx):end] .- 0.5 .* ρ[Int((34/100)*nx):end] .* (av_x(Mx)[Int((34/100)*nx):end] ./ ρ[Int((34/100)*nx):end]).^2)
+        P[Int((34/100)*nx):end] .= (γ .- 1.0) .* (E[Int((34/100)*nx):end] .- 0.5 .* ρ[Int((34/100)*nx):end] .* av_x(Vx)[Int((34/100)*nx):end].^2)
+        L_t = E[34:36]
+        R_t = 0.5 .* ρ[34:36] .* av_x(Vx)[34:36].^2
+
         #P[1:Int((33/100)*nx)] .= ρ[1:Int((33/100)*nx)] .* c.^2.0
         dP = dρ[1:Int((33/100)*nx)] .* c.^2.0
         P[1:Int((33/100)*nx)] .= dP .+ P[1:Int((33/100)*nx)]
         #P[1:Int((33/100)*nx)] .= ((1.0 ./ β[1:Int((33/100)*nx)]) .* log.(ρ[1:Int((33/100)*nx)] ./ 2800.0) .+ P[1:Int((33/100)*nx)])
+
+        P[1] = 0#P[2]
+        P[end] = 0#P[end-1]
 
         e = P ./ (γ - 1.0) ./ ρ
 
@@ -224,16 +231,18 @@ function coupled_wave1D_up()
             @show c_var_a
             mach = maximum(abs.(Vx[34:end])) / 340.0
             @show mach
+            @show i, L_t
+            @show i, R_t
             fig2 = Figure(size=(1000, 800))
             ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=8))")#, limits=(nothing, nothing, -0.25, 0.25))
             ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
             ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing,-50.0, 3050.0))
             #opts = (;linewidth = 2, color = :red)
-            #lines!(ax4, xc, values.ρ; opts...)
-            #lines!(ax2, xc, values.u; opts...)
-            #lines!(ax1, xc, values.p; opts...)
-            #lines!(ax3, xc, e_anal; opts...)
+            # lines!(ax4, xc, values.ρ; opts...)
+            # lines!(ax2, xc, values.u; opts...)
+            # lines!(ax1, xc, values.p; opts...)
+            # lines!(ax3, xc, e_anal; opts...)
             li = scatter!(ax1, xc_vec, P, label="time = $t")
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
@@ -244,6 +253,7 @@ function coupled_wave1D_up()
             scatter!(ax4, xc_vec, ρ)
             lines!(ax4, xc_vec, ρ)
             
+            
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             display(fig2)
             if i % nt == 0 && plotlegend == true
@@ -253,7 +263,5 @@ function coupled_wave1D_up()
                 display(fig2)
             end
         end
-        
     end
-    
 end

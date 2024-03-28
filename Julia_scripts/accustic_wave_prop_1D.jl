@@ -60,7 +60,7 @@ function acoustic_wave()
         
         if i % divisor == 0
             fig2 = Figure()
-            ax1 = Axis(fig2[1,1], title="Pressure")#, limits=(nothing, nothing, -0.01, 1.1))
+            ax1 = Axis(fig2[1,1], title="Pressure, time =$t")#, limits=(nothing, nothing, -0.01, 1.1))
             ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.01, 1.1))
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)

@@ -76,9 +76,9 @@ function ac_wave1D()
         #c = sqrt(K / maximum(ρ))                # speed of sound
         #@show c
 
-        Vxdρdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(ρ), dims=1) ./ dx
+        #Vxdρdx .= .-av_x(Vx[2:end-1]) .* diff(av_x(ρ), dims=1) ./ dx
         ρdVxdt .= .-ρ[2:end-1] .* diff(Vx[2:end-1], dims=1) ./ dx
-        dρ = Vxdρdx .* dt .+ ρdVxdt .* dt
+        dρ = ρdVxdt .* dt
         ρ[2:end-1] .= ρ[2:end-1] .+ dρ
 
         dP = c.^2.0 .* dρ
@@ -87,8 +87,8 @@ function ac_wave1D()
         Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (av_x(ρ) .- av_x(ρ_old))
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
-        VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* diff(ρ .* av_x(Vx), dims=1) ./ dx
-        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt .* dt
+        #VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* diff(ρ .* av_x(Vx), dims=1) ./ dx
+        Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ Vxdρdt .* dt
 
         t += dt
         if i % divisor == 0
@@ -113,6 +113,6 @@ function ac_wave1D()
     end
     Legend(fig[3,:], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=Int(floor((nt/divisor)+1)), tellhight = false, tellwidth = false)
     rowsize!(fig.layout, 3, 40)
-    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_acoustic_wave/with_realistic_parameters/4_in_one_acoustic.png", fig)
+    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_acoustic_wave/no_advection/2/4_in_one_acoustic.png", fig)
     display(fig)
 end

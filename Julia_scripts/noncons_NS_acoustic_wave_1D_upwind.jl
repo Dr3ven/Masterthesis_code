@@ -33,16 +33,16 @@ function ac_wave1D_up()
     P0 = 1.0e6                          # initial pressure at all points
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     # Gaussian parameters
-    A = 1.0e5                          # gaussian maximum amplitude
+    A = 1.0e7                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 2000 
+    divisor = 3000 
 
     # Numerics
-    nx = 100                             # number of nodes in x
+    nx = 200                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 150000                             # number of time steps
+    nt = 10000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -79,17 +79,17 @@ function ac_wave1D_up()
     linplots = []
 
     # Initial plotting
-    fig = Figure(size=(1000, 800))
-    Label(fig[1,1:2], "Time = 0.0", tellwidth=false, font=:bold ,fontsize=30)
+    fig = Figure(size=(1000, 800), fontsize=20)
+    # Label(fig[1,1:2], "Time = 0.0", tellwidth=false, font=:bold ,fontsize=30)
     #ax1 = Axis(fig[1,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
     #ax2 = Axis(fig[3,1], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     #l0 = lines!(ax1, xc_vec, P, label="time = 0")
     #push!(linplots, l0)
     #lines!(ax2, xv_vec, Vx)
-    ax1 = Axis(fig[2,1], title="Density, time = $t")
-    ax2 = Axis(fig[2,2], title="Velocity")
-    ax3 = Axis(fig[3,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
-    ax4 = Axis(fig[3,2], title="Energy")
+    ax1 = Axis(fig[1,1], title="Density", ylabel="Density", xticklabelsvisible=false, xticksvisible=false)
+    ax2 = Axis(fig[1,2], title="Velocity",ylabel="Velocity", xticklabelsvisible=false, xticksvisible=false)
+    ax3 = Axis(fig[2,1], title="Pressure", xlabel="Domain", ylabel="Pressure")#, limits=(nothing, nothing, P0, P_max))
+    ax4 = Axis(fig[2,2], title="Energy", xlabel="Domain", ylabel="Energy")
     l0 = lines!(ax1, xc_vec, ρ)
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
@@ -119,29 +119,29 @@ function ac_wave1D_up()
 
         t += dt
         if i % divisor == 0
-            fig2 = Figure(size=(1000, 800), fontsize=20)
-            Label(fig2[1,1:2], "Time = $(round(t, digits=8))", tellwidth=false, font=:bold ,fontsize=30)
+            # fig2 = Figure(size=(1000, 800), fontsize=20)
+            # Label(fig2[1,1:2], "Time = $(round(t, digits=8))", tellwidth=false, font=:bold ,fontsize=30)
             #ax1 = Axis(fig2[1,1], title="Pressure, time = $t")#, limits=(nothing, nothing, -0.25, 0.25))
             #ax2 = Axis(fig2[2,1], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
             #li = lines!(ax1, xc_vec, P, label="time = $t")
             #push!(linplots, li)
             #lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
-            #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
-            ax1 = Axis(fig2[2,1], title="Density, time = ")
-            ax2 = Axis(fig2[2,2], title="Velocity")
-            ax3 = Axis(fig2[3,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
-            ax4 = Axis(fig2[3,2], title="Energy")
+            # ax1 = Axis(fig2[2,1], title="Density, time = ")
+            # ax2 = Axis(fig2[2,2], title="Velocity")
+            # ax3 = Axis(fig2[3,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
+            # ax4 = Axis(fig2[3,2], title="Energy")
             l0 = lines!(ax1, xc_vec, ρ)
             push!(linplots, l0)
             lines!(ax2, xv_vec, Vx)
             lines!(ax3, xc_vec, P)
             lines!(ax4, xc_vec, e)
-            display(fig2)
+            #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
+            #display(fig)
         end
     end
     #@infiltrate
-    # +dt*divisor
-    #Legend(fig[2,1], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", nbanks=2, orientation=:horizontal, tellhight = false, tellwidth = false)
-    #save("C:\\Users\\Nils\\Desktop\\Masterthesis_code\\Plots\\Navier-Stokes_acoustic_wave\\with_realistic_parameters_upwind_v2\\Acoustic_upwind_v2.png", fig)
-    #display(fig)
+    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", nbanks=Int(floor((nt/divisor)+1)), tellhight = false, tellwidth = false)
+    rowsize!(fig.layout, 3, 60)
+    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_acoustic_wave/upwind_forthesis/3_in_one_acoustic_upwind.png", fig)
+    display(fig)
 end

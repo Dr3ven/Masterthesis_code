@@ -17,7 +17,7 @@ Compute the flux using a 1D upwind scheme
 function flux_upwind(u, G, dx)
     G_p = (G[2:end-1] .- G[1:end-2])./dx
     G_m = (G[3:end] .- G[2:end-1])./dx
-    Gflux = #=sign.(u[2:end-1]).*=#(G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
+    Gflux = sign.(u[2:end-1]).*(G_p.*(u[2:end-1] .> 0) .+ G_m.*(u[2:end-1] .< 0))
 
     return Gflux
 end
@@ -27,7 +27,7 @@ function flux_upwind_center(u, G, dx)
     G_p = (G[2:end-1] .- G[1:end-2])./dx
     G_m = (G[3:end] .- G[2:end-1])./dx
     u_c = average(u)
-    Gflux = #=sign.(u_c[2:end-1]).*=#(G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
+    Gflux = sign.(u_c[2:end-1]).*(G_p.*(u_c[2:end-1] .> 0) .+ G_m.*(u_c[2:end-1] .< 0))
 
     return Gflux
 end
@@ -36,21 +36,26 @@ function wave_b(; wave=true)
     # Parameters
     L = 1.0             # Length of the domain
     Nx = 100           # Number of spatial grid points
-    Nt = 100000; #1400           # Number of time steps
+    Nt = 1400; #1400           # Number of time steps
     dx = L / (Nx - 1)   # Spatial grid spacing
-    dt = 1e-8           # Temporal grid spacing
+    dt = 1e-4           # Temporal grid spacing
     σ = L * 0.04
-    A = 10.0
+    A = 1.0e7
+    divisor = 10
 
-    # Initial conditions
-    ρ0 = 3000.0     # Initial density
-    P0 = 1.0e6      # Initial pressure
-    K  = 1.0e10     # Bulk modulus
-    μ  = 1e-3
-    γ  = 1.4
-    c = sqrt(K / ρ0)                # speed of sound
-    #c = 5000.0 # velocity of sound
-    
+    if wave == false
+        # Initial conditions
+        ρ0 = 1.0     # Initial density
+        γ  = 1.4
+    else
+        # Initial conditions
+        ρ0 = 3000.0     # Initial density
+        P0 = 1.0e6      # Initial pressure
+        K  = 1.0e10     # Bulk modulus
+        μ  = 1e-3
+        γ  = 1.4
+        c = sqrt(K / ρ0)                # speed of sound
+    end
     # Arrays to store results
     x   = 0:dx:L
     x_c = average(x)
@@ -63,8 +68,10 @@ function wave_b(; wave=true)
         ρ[x_c .> 0.5] .= 0.125
         P[x_c .> 0.5] .= 0.1
     else 
-        P .= P0 .+ A .*exp.(.-1.0 .* ((x_c .- 0.5*L) ./ σ).^2.0)        # initial pressure distribution
-        ρ .= P./c.^2.0  
+        dP = A .* exp.(.-1.0 .* ((x_c .- 0.5*L) ./ σ).^2.0)        # initial pressure distribution
+        P .= P0 .+ dP
+        dρ = dP ./ c.^2.0 
+        ρ .= ρ0 .+ dρ 
     end
 
      
@@ -82,7 +89,8 @@ function wave_b(; wave=true)
         # Note that this specified at the center of a control volume
         # ∂ρ/∂t + ∂(ρu)/∂x = 0
         ρ_v = extend_vertices(average(ρ))
-        ρ[2:end-1]      .-=   dt .* flux_upwind_center(u, ρ.*average(u), dx)
+        dρ = dt .* flux_upwind_center(u, ρ.*average(u), dx)
+        ρ[2:end-1]      .-=  dρ
 
         # update ρu (momentum) using the momentum equation:
         # This is formulated around the vertices of the control volume  
@@ -101,10 +109,11 @@ function wave_b(; wave=true)
         if wave == false
             P .= (γ .- 1.0) .* (E .- 0.5.*ρ.* u_c.^2)
         else
-            P .= ρ.*c.^2.0;
+            dP = dρ.*c.^2.0;
+            P[2:end-1] .= P0 .+ dP
         end
 
-        if mod(n,1) == 0
+        if mod(n,divisor) == 0
             c_anal = sqrt.(abs.(γ*P./ρ))     # shouldnt go negative but sometimes does
             #dt_courant = dx/(maximum(abs.(u_c) + c_anal))
             #@show dt_courant, t
@@ -122,28 +131,26 @@ function wave_b(; wave=true)
             e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
         end
 
-        if n % 1000 == 0
-            fig2 = Figure()
-            ax1 = Axis(fig2[1,1], title="Density, time = $t")
-            ax2 = Axis(fig2[1,2], title="Velocity")
-            ax3 = Axis(fig2[2,1], title="Pressure")#, limits=(nothing, nothing, P0, P_max))
-            ax4 = Axis(fig2[2,2], title="Energy")
-
-            #ylims!(ax, -1.2, 1.2)
+        if n % divisor == 0
+            fig2 = Figure(size=(1000,800), fontsize=20)
+            ax1 = Axis(fig2[1,1], title="Density", ylabel="Density", xticklabelsvisible=false, xticksvisible=false)
+            ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xticklabelsvisible=false, xticksvisible=false)
+            ax3 = Axis(fig2[2,1], title="Pressure", xlabel="Domain", ylabel="Pressure")#, limits=(nothing, nothing, P0, P_max))
+            ax4 = Axis(fig2[2,2], title="Energy", xlabel="Domain", ylabel="Energy")
             opts = (;linewidth = 2, color = :red)
             lines!(ax1, x_c, ρ)
             lines!(ax2, x_c, average(u))
             lines!(ax3, x_c, P)
             lines!(ax4, x_c, e)
-            #lines!(ax1, x_c, values.ρ; opts...)
-            #lines!(ax2, x_c, values.u; opts...)
-            #lines!(ax3, x_c, values.p; opts...)
-            #lines!(ax4, x_c, e_anal; opts...)
+            lines!(ax1, x_c, values.ρ; opts...)
+            lines!(ax2, x_c, values.u; opts...)
+            lines!(ax3, x_c, values.p; opts...)
+            lines!(ax4, x_c, e_anal; opts...)
             display(fig2)
         end
     end
 
-   return ρ, u, P, E
+   #return ρ, u, P, E
 end
 
 #ρ_b, u_b, P_b, E_b = run()

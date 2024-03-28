@@ -37,12 +37,12 @@ function shock_wave1D_up()
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 280 
+    divisor = 35000 
 
     # Numerics
-    nx = 1000                             # number of nodes in x
+    nx = 200                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 1400                             # number of time steps
+    nt = 140000                             # number of time steps
 
     # Grid definition
     xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
@@ -76,7 +76,7 @@ function shock_wave1D_up()
     E .= P./((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
 
-    dt = 1.0e-4#8 #dx / (c * 4.0)                      # time step size
+    dt = 1.0e-6#8 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
     xc_vec = Array(xc)
@@ -94,19 +94,19 @@ function shock_wave1D_up()
     linplots = []
 
     # Initial plotting
-    fig = Figure(size=(1000, 800))
+    fig = Figure(size=(1000, 800), fontsize=20)
     ax1 = Axis(fig[2,1], title="Pressure", ylabel="Pressure", xlabel="Domain",)# limits=(nothing, nothing, P0-(A*3/5), P0+A))
-    ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    ax2 = Axis(fig[1,2], title="Velocity", ylabel="Velocity", xticklabelsvisible=false, xticksvisible=false)#, limits=(nothing, nothing, -0.25, 0.25))
     ax3 = Axis(fig[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-    ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+    ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xticklabelsvisible=false, xticksvisible=false)#, limits=(nothing, nothing, -0.25, 0.25))
     l0 = lines!(ax1, xc_vec, P, label="time = 0")
     push!(linplots, l0)
     lines!(ax2, xv_vec, Vx)
     lines!(ax3, xc_vec, e)
     lines!(ax4, xc_vec, ρ)
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
-    #display(fig)
-
+    display(fig)
+    li2 = nothing
     for i = 1:nt
         t += dt
 
@@ -147,13 +147,13 @@ function shock_wave1D_up()
 
 
         if i % divisor == 0
-            fig2 = Figure(size=(1000, 800), fontsize=20)
-            Label(fig2[1,1:2], "Time =  $(round(t, digits=4))", tellwidth=false, font=:bold ,fontsize=26)
-            ax1 = Axis(fig2[3,1], title="Pressure", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax2 = Axis(fig2[2,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax3 = Axis(fig2[3,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            ax4 = Axis(fig2[2,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
-            opts = (;linewidth = 2, color = :red)
+            # fig2 = Figure(size=(1000, 800), fontsize=20)
+            # Label(fig2[1,1:2], "Time =  $(round(t, digits=4))", tellwidth=false, font=:bold ,fontsize=26)
+            # ax1 = Axis(fig2[3,1], title="Pressure", ylabel="Pressure", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # ax2 = Axis(fig2[2,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # ax3 = Axis(fig2[3,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            # ax4 = Axis(fig2[2,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            opts = (;linewidth = 2, color = :red, label="analyt. @ 0.14")
             li2 = lines!(ax4, xc, values.ρ; opts...)
             lines!(ax2, xc, values.u; opts...)
             lines!(ax1, xc, values.p; opts...)
@@ -172,15 +172,19 @@ function shock_wave1D_up()
             #display(fig2)
             if i % nt == 0
                 #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-                Legend(fig2[4,:], [li2, linplots[end]], ["analytical", "numerical"], "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-                rowsize!(fig2.layout, 4, 50)
+                #Legend(fig[4,:], [li2, linplots[end]], ["analytical", "numerical"], "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+                #rowsize!(fig.layout, 3, 50)
+                #rowsize!(fig.layout, 4, 50)
                 #save("/home/nils/Masterthesis_code/Plots/Nils_Euler-equations_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_vs_analytical_corrected.png", fig2) #time_evolution
-                display(fig2)
+                #display(fig)
             end
         end
     end
-    #Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int((nt/divisor)+1))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    #rowsize!(fig.layout, 3, 40)
-    #save("/home/nils/Masterthesis_code/Plots/Navier-Stokes_shock_wave/all_terms_upwind_sod_shock_setup/Shock_upwind_time_evolution.png", fig)
-    #display(fig)
+    linplots = append!(linplots, [li2])
+    text = string.(round.(0:dt*divisor:dt*nt, digits=8))
+    text = append!(text, ["0.14 (analytical)"])
+    Legend(fig[3,:], linplots, text, "Total time", tellwidth = false, nbanks=Int(floor((nt/divisor)+2)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    rowsize!(fig.layout, 3, 50)
+    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_shock_wave/all_terms_upwind_sod_shock_setup/3/Shock_upwind_time_evolution_corrected_n200.png", fig)
+    display(fig)
 end

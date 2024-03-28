@@ -1,4 +1,5 @@
 using CairoMakie
+using SodShockTube
 using Infiltrator
 
 function av_x(B)
@@ -18,10 +19,10 @@ function shock_wave1D()
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 56000#400000 
+    divisor = 70000#400000 
 
     # Numerics
-    nx = 100                             # number of nodes in x
+    nx = 200                             # number of nodes in x
     dx = Lx / nx                        # step size in x
     nt = 140000#2000000                             # number of time steps
 
@@ -63,6 +64,16 @@ function shock_wave1D()
     xc_vec = Array(xc)
     xv_vec = Array(xv)
 
+    # Analytical solution 
+    problem = ShockTubeProblem(
+        geometry = (-(Lx - dx) / 2, (Lx - dx) / 2, 0.0), # left edge, right edge, initial shock location
+        left_state = (ρ = 1.0, u = 0.0, p = 1.0),
+        right_state = (ρ = 0.125, u = 0.0, p = 0.1),
+        t = 0.14, γ = γ)
+    positions, regions, values = solve(problem, xc);
+    e_anal = values.p./((γ-1).*values.ρ)      # it seems the e calculation is a bit different in the analytical code
+
+
     linplots = []
 
     # Initial plotting
@@ -78,7 +89,7 @@ function shock_wave1D()
     lines!(ax4, xc_vec, ρ)
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
     #display(fig)
-
+    li2 = nothing
     for i = 1:nt
         #c = sqrt(K / maximum(ρ))                # speed of sound
         #@show c
@@ -111,6 +122,11 @@ function shock_wave1D()
             # ax2 = Axis(fig2[1,2], title="Velocity", ylabel="Velocity", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             # ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             # ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
+            opts = (;linewidth = 2, color = :red, label="analyt. @ 0.14")
+            li2 = lines!(ax4, xc, values.ρ; opts...)
+            lines!(ax2, xc, values.u; opts...)
+            lines!(ax1, xc, values.p; opts...)
+            lines!(ax3, xc, e_anal; opts...)
             li = lines!(ax1, xc_vec, P, label="time = $t")
             push!(linplots, li)
             lines!(ax2, xv_vec[2:end-1], Vx[2:end-1])
@@ -121,8 +137,11 @@ function shock_wave1D()
         end
     end
     #@infiltrate
-    Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", tellwidth = false, nbanks=Int(floor((nt/divisor)+1)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
-    rowsize!(fig.layout, 3, 40)
-    save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_shock_wave/all_terms_sod_shock_setup/3_in_one_shock_wave.png", fig)
+    linplots[end] = li2
+    text = string.(round.(0:dt*divisor:dt*nt, digits=8))
+    text[end] = "0.14 (analytical)"
+    Legend(fig[3,:], linplots, text, "Total time", tellwidth = false, nbanks=Int(floor((nt/divisor)+2)))#, tellhight = false, tellwidth = false)#, orientation=:horizontal, tellhight = false, tellwidth = false)
+    rowsize!(fig.layout, 3, 50)
+    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_shock_wave/all_terms_sod_shock_setup/2/3_in_one_shock_wave_vs_ana.png", fig)
     display(fig)
 end
