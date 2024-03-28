@@ -1,7 +1,7 @@
 using CairoMakie
 
 function av_x(B)
-    A = 0.5 .* (B[2:end,:] .+ B[1:end-1,:])
+    A = 0.5 .* (B[2:end] .+ B[1:end-1])
 end
 
 function ac_wave1D()
@@ -24,8 +24,8 @@ function ac_wave1D()
     nt = 10000                             # number of time steps
 
     # Grid definition
-    xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
-    xv = - Lx       / 2:dx: Lx       / 2        # grid vertices in x-direction
+    xv = 0.0:dx:Lx                      # grid nodes in x-direction
+    xc = av_x(xv)        # grid vertices in x-direction
 
     # Allocations
     ρ = ones(nx) .* ρ0
@@ -41,7 +41,7 @@ function ac_wave1D()
     e = zeros(nx)
 
     # Initial conditions
-    dP = A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
+    dP = A .* exp.(.- 1.0 .* ((xc .- 0.5 * Lx)./ σ).^2.0)       # initial pressure distribution
     P .= P0 .+ dP
     c = sqrt(K / ρ0)                # speed of sound
     dρ = dP ./ c^2.0                                 # initial density distribution
@@ -50,8 +50,8 @@ function ac_wave1D()
     dt = 1.0e-8 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
-    xc_vec = Array(xc)
-    xv_vec = Array(xv)
+    xc_vec = Vector(xc)
+    xv_vec = Vector(xv)
 
     linplots = []
 
@@ -113,6 +113,6 @@ function ac_wave1D()
     end
     Legend(fig[3,:], linplots, string.(0:dt*divisor:dt*nt), "Total time", nbanks=Int(floor((nt/divisor)+1)), tellhight = false, tellwidth = false)
     rowsize!(fig.layout, 3, 40)
-    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_acoustic_wave/with_realistic_parameters/4_in_one_acoustic.png", fig)
+    #save("C:\\Users\\Nils\\Desktop\\Masterarbeit_plots\\Nils_noncons_Euler-equations_acoustic_wave\\cent_diff\\4_in_one_acoustic.png", fig)
     display(fig)
 end

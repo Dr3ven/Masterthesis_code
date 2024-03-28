@@ -2,7 +2,7 @@ using CairoMakie
 using Infiltrator
 
 function av_x(B)
-    A = 0.5 .* (B[2:end,:] .+ B[1:end-1,:])
+    A = 0.5 .* (B[2:end] .+ B[1:end-1])
 end
 
 function upwind(u, G, dx)
@@ -45,8 +45,8 @@ function ac_wave1D_up()
     nt = 10000                             # number of time steps
 
     # Grid definition
-    xc = -(Lx - dx) / 2:dx:(Lx - dx) / 2        # grid nodes in x-direction
-    xv = - Lx       / 2:dx: Lx       / 2        # grid vertices in x-direction
+    xv = 0.0:dx:Lx        # grid nodes in x-direction
+    xc = av_x(xv)        # grid vertices in x-direction
 
     # Allocations
     ρ = ones(nx) .* ρ0
@@ -64,7 +64,7 @@ function ac_wave1D_up()
 
     # Initial conditions
     c = sqrt(K / ρ0)                                    # speed of sound
-    dP = A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)
+    dP = A .* exp.(.- 1.0 .* ((xc .- 0.5.*Lx) ./ σ).^2.0)
     P .= P0 .+ dP                                       # initial pressure distribution
     dρ = dP ./ c^2.0                                 # initial density distribution
     ρ .+= dρ
@@ -142,6 +142,6 @@ function ac_wave1D_up()
     #@infiltrate
     Legend(fig[3,:], linplots, string.(round.(0:dt*divisor:dt*nt, digits=8)), "Total time", nbanks=Int(floor((nt/divisor)+1)), tellhight = false, tellwidth = false)
     rowsize!(fig.layout, 3, 60)
-    #save("/home/nils/Masterthesis_code/Plots/Nils_noncons_Euler-equations_acoustic_wave/upwind_forthesis/3_in_one_acoustic_upwind.png", fig)
+    save("C:\\Users\\Nils\\Desktop\\Masterarbeit_plots\\Nils_noncons_Euler-equations_acoustic_wave\\upwind_forthesis\\4_in_one_acoustic_upwind.png", fig)
     display(fig)
 end
