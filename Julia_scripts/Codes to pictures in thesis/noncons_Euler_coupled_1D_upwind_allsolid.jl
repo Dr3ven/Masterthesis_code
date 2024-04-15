@@ -207,7 +207,6 @@ function coupled_wave1D_up()
             
             save("iteration_$(i)_lines.png", fig2)
             # display(fig2)
-            end
         end
     end
 end
