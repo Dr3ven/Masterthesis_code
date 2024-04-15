@@ -343,9 +343,10 @@ function conservative2D()
         # Updating plot
         if mod(it-1, 1) == 0
             #global fig = fig
-            fig1 = Figure()
+            fig1 = Figure(size=(1000,800), fontsize=20)
             #global ax = ax
-            ax = Axis(fig1[1,1], title="time = $time", yticklabelsize=25, xticklabelsize=25, xlabelsize=25, ylabelsize=25)
+            ax1 = Axis(fig1[1,1], title="Velocity, time = $time")
+            ax2 = Axis(fig1[2,1], title="Density")
 
             X = av_xy(x2dc)
             Y = av_xy(y2dc)
@@ -354,10 +355,13 @@ function conservative2D()
             data_plt = sqrt.(U.^2 .+ V.^2)
 
             # hm = heatmap!(ax, x2dc, y2dc, P, shading=false, colormap=Reverse(:roma), colorrange=(P0, P0*2))
-            hm = heatmap!(ax, Xv, Yv, data_plt, colormap=Reverse(:roma), colorrange=(0.0, 1000.0))
+            hm1 = heatmap!(ax1, Xv, Yv, data_plt, colormap=Reverse(:roma), colorrange=(0.0, 1000.0))
+            hm2 = heatmap!(ax2, Xc, Yc, rho, colormap=Reverse(:roma))#, colorrange=(0.0, 1000.0))
             #Colorbar(fig1[1,2],  hm, label="Pressure [Pa]")
-            Colorbar(fig1[1,2],  hm, label="Velocity [m/s]")
-            lines!(ax, Xp, Yp, color = :white)
+            Colorbar(fig1[1,2], hm1, label="Velocity [m/s]")
+            Colorbar(fig1[2,2], hm2, label="Density [kg/m^3]")
+            lines!(ax1, Xp, Yp, color = :white)
+            lines!(ax2, Xp, Yp, color = :white)
             #poly!(ax,points_XpYp)
             
             stepsize = 5

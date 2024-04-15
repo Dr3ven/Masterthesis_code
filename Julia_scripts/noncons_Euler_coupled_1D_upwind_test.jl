@@ -34,20 +34,20 @@ function coupled_wave1D_up()
     ρ0 = 2800.0                          # initial density at all points
     P0_a = 1.0e5                          # initial pressure at all points
     P0_s = 1.0e6
-    P0_c = P0_s + 1.0e7
+    P0_c = P0_s #+ 1.0e7
     Vx0 = 0.0                          # initial velocity in x-direction for all points
     # Gaussian parameters
     A = 10.0                          # gaussian maximum amplitude
     σ = Lx * 0.04                            # standard deviation of the initial pressure distribution
     
     # Plotting parameters
-    divisor = 10
+    divisor = 100
     plotlegend = false
 
     # Numerics
-    nx = 200                             # number of nodes in x
+    nx = 100                             # number of nodes in x
     dx = Lx / nx                        # step size in x
-    nt = 700000                             # number of time steps
+    nt = 7000000                             # number of time steps
 
     # Grid definition
     xc = 0:dx:Lx-dx        # grid nodes in x-direction
@@ -69,7 +69,7 @@ function coupled_wave1D_up()
     E = zeros(nx)
     e = zeros(nx)
     Vxdρdx = zeros(nx - 2)
-    ρdVxdt = zeros(nx - 2)
+    ρdVxdx = zeros(nx - 2)
     Vxdρdt = zeros(nx - 1)
     ρdPdx = zeros(nx - 1)
     ρVxdVxdx = zeros(nx - 1)
@@ -81,20 +81,33 @@ function coupled_wave1D_up()
     PdVxdx = zeros(nx - 2)
     ρVxdEdx = zeros(nx - 2)
 
+    # Indices for borders of the three phases
     idx_solid = Int(floor((33/100)*nx))
+    idx_solidVx = Int(floor((33/100)*(nx+1)))
     idx_chamber = idx_solid+1
-    idx_chamber2 = Int(floor((65/100)*nx))
+    idx_chamberVx = idx_solid+1
+    idx_chamber2 = Int(floor((65/100)*(nx+1)))
+    idx_chamber2Vx = Int(floor((65/100)*(nx+1)))
     idx_air = idx_chamber2+1
+    idx_airVx = idx_chamber2+1
 
+    # Mask arrays
     masksolid = ones(nx)
     masksolidVx = ones(nx+1)
-    maskair = masksolid
-    maskairVx = masksolidVx
-    maskair[1:idx_solid] .= 0.0
-    maskairVx[1:idx_solid] .= 0.0
     masksolid[idx_chamber:end] .= 0.0
     masksolidVx[idx_chamber:end] .= 0.0
+    maskair = masksolid .- 1.0
+    maskair = abs.(maskair)
+    maskairVx = masksolidVx .- 1.0
+    maskairVx = abs.(maskairVx)
     
+    # Seismogram arrays
+    Pseismo_solid_border = zeros(nt+1)
+    Pseismo_solid_mid = zeros(nt+1)
+    Pseismo_cham = zeros(nt+1)
+    Pseismo_air = zeros(nt+1)
+    tseismo = zeros(nt+1)
+
     # Initial conditions
     #P .= P0 .+ A .* exp.(.- 1.0 .* (xc ./ σ).^2.0)       # initial pressure distribution
     #depth_solid = 67:-1:1
@@ -122,9 +135,18 @@ function coupled_wave1D_up()
     E .= P ./ ((γ - 1.0)) + 0.5 .* av_x(Vx).^2
     e .= P ./ (γ - 1.0) ./ ρ
 
-    dt = 1.0e-4#8 #dx / (c * 4.0)                      # time step size
+    # First entries at t=0 for seismograms
+    Pseismo_air[1] = P[Int(floor((80/100)*nx))]
+    Pseismo_cham[1] = P[Int(floor((45/100)*nx))]
+    Pseismo_solid_border[1] = P[idx_solid]
+    Pseismo_solid_mid[1] = P[idx_solid-2]
+    tseismo[1] = 0.0
+
+    # Time step and total time
+    dt = 1.0e-5#8 #dx / (c * 4.0)                      # time step size
     t = 0.0                                         # initial time
 
+    # Domain arrays for plotting
     xc_vec = Array(xc)
     xv_vec = Array(xv)
 
@@ -146,10 +168,24 @@ function coupled_wave1D_up()
     ax3 = Axis(fig[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     ax4 = Axis(fig[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
     l0 = scatter!(ax1, xc_vec, P, label="time = 0")
+    
     push!(linplots, l0)
     scatter!(ax2, xv_vec, Vx)
     scatter!(ax3, xc_vec, e)
     scatter!(ax4, xc_vec, ρ)
+    scatter!(ax1, xc_vec[idx_solid], P[idx_solid], color=:brown)
+    scatter!(ax2, xv_vec[idx_solidVx], Vx[idx_solidVx], color=:brown)
+    scatter!(ax3, xc_vec[idx_solid], e[idx_solid], color=:brown)
+    scatter!(ax4, xc_vec[idx_solid], ρ[idx_solid], color=:brown)
+    # vlines!(ax1, Lx*(33/100), color=:brown)
+    # vlines!(ax2, Lx*(33/100), color=:brown)
+    # vlines!(ax3, Lx*(33/100), color=:brown)
+    # vlines!(ax4, Lx*(33/100), color=:brown)
+    # vlines!(ax1, Lx*(66/100), color=:green)
+    # vlines!(ax2, Lx*(66/100), color=:green)
+    # vlines!(ax3, Lx*(66/100), color=:green)
+    # vlines!(ax4, Lx*(66/100), color=:green)
+
     #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(0).png", fig)
     display(fig)
 
@@ -162,8 +198,10 @@ function coupled_wave1D_up()
         c_var_c = sqrt(K ./ maximum(ρ[idx_chamber:end]))
 
         Vxdρdx .= .-av_x(Vx[2:end-1]) .* upwind_center(Vx, ρ, dx) #.* maskair[2:end-1]
-        ρdVxdt .= .-ρ[2:end-1] .* (diff(Vx[2:end-1], dims=1) ./ dx) #.* maskair[2:end-1]
-        dρ = Vxdρdx .* dt .+ ρdVxdt .* dt
+        #@show Vxdρdx[idx_solid-1:idx_solid+1]
+        ρdVxdx .= .-ρ[2:end-1] .* (diff(Vx[2:end-1], dims=1) ./ dx) #.* maskair[2:end-1]
+        #@show ρdVxdx[idx_solid-1:idx_solid+1]
+        dρ = Vxdρdx .* dt .+ ρdVxdx .* dt
         ρ[2:end-1] .= ρ[2:end-1] .+ dρ
         ρ_t_av .= (ρ .+ ρ_old) .* 0.5
 
@@ -176,7 +214,7 @@ function coupled_wave1D_up()
         Vxdρdt .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* (dρ_t ./ dt)
         ρdPdx .= .-(1.0 ./ av_x(ρ)) .* diff(P, dims=1) ./ dx
         ρVxdVxdx .= .-(1.0 ./ av_x(ρ)) .* (av_x(ρ) .* Vx[2:end-1]) .* diff(av_x(Vx), dims=1) ./ dx
-        VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx) .* maskairVx[2:end-1]
+        VxdρVxdx .= .-(1.0 ./ av_x(ρ)) .* Vx[2:end-1] .* upwind(Vx, ρ_v .* Vx, dx) #.* maskairVx[2:end-1]
         Vx[2:end-1] .= Vx[2:end-1] .+ ρdPdx .* dt .+ ρVxdVxdx .* dt .+ VxdρVxdx .* dt .+ Vxdρdt .* dt
         
         Vx[1] = Vx[2]
@@ -197,7 +235,7 @@ function coupled_wave1D_up()
         E[2:end-1] .= E[2:end-1] .+ EdρVxdx .* dt .+ VxdPdx .* dt .+ PdVxdx .* dt .+ ρVxdEdx .* dt
 
         # E[1] = E[2]    # lassen die simulation explodieren wenn Rand erreicht wird
-        E[end] = 0#E[end-1]
+        E[end] = E[end-1]
 
         # Momentum formulation
         # EdρVxdx.= .-E[2:end-1] .* upwind_center(Vx, av_x(Mx), dx)
@@ -210,7 +248,7 @@ function coupled_wave1D_up()
             println("Negative density at iteration $i, time $t")
             findρ = findall(x-> x .< 0.0, ρ)
             #println("Index $findρ\nDensity: $(ρ[findρ])")
-            break
+            #break
         elseif any(P .< -1.0e6)
             findP = findall(x-> x .< -1.0e6, P)
             #println("Negative pressure at iteration $i, time $t")
@@ -229,12 +267,17 @@ function coupled_wave1D_up()
         end
         depth_cham_air = 1:1:length(idx_chamber:nx)
         P[idx_chamber+1:end] .= (γ .- 1.0) .* (E[idx_chamber+1:end] .- 0.5 .* ρ[idx_chamber+1:end] .* av_x(Vx)[idx_chamber+1:end].^2)
-        P[idx_chamber] = P[idx_chamber+1]
+        #P[idx_chamber2+1:end] .= (γ .- 1.0) .* (E[idx_chamber2+1:end] .- 0.5 .* ρ[idx_chamber2+1:end] .* av_x(Vx)[idx_chamber2+1:end].^2)
+        #P[idx_chamber] = P[idx_chamber+1]
         #L_t = E[idx_chamber-1:idx_chamber+1]
         #R_t = 0.5 .* ρ[idx_chamber-1:idx_chamber+1] .* av_x(Vx)[idx_chamber-1:idx_chamber+1].^2
+        if i <= 10
+            P[idx_chamber:idx_chamber2] .= P[idx_chamber:idx_chamber] .+ 1.0e6
+        end
+        dP = dρ .* c.^2.0#
+        P[2:idx_solid] .= P[2:idx_solid] .+ dP[1:idx_solid-1] .* 0.9
 
-        dP = dρ[1:idx_solid-1] .* c.^2.0
-        P[2:idx_solid] .= P[2:idx_solid] .+ dP 
+        #P[2:idx_chamber] .= P[2:idx_chamber] .+ dP[1:idx_chamber-1] 
         #P[1:idx_solid] .= .-K .* log.(ρ[1:idx_solid] ./ ρ0) .+ P0_s
 
         #P[1] = 0#P[2]
@@ -243,22 +286,34 @@ function coupled_wave1D_up()
         e = P ./ (γ - 1.0) ./ ρ
 
         t += dt
+
+        # Fill seismo data arrays
+        Pseismo_air[i+1] = P[Int(floor((80/100)*nx))]
+        Pseismo_cham[i+1] = P[Int(floor((45/100)*nx))]
+        Pseismo_solid_border[i+1] = P[idx_solid]
+        Pseismo_solid_mid[i+1] = P[idx_solid-2]
+        tseismo[i+1] = t
+        #println("After seismo calculations")
         #if t > 0.0015
         #    divisor = 1
         #end
-        if i % divisor == 0
+        if i % divisor == 0 || i <= 10
             println("#------- Iteration $i-------#")
-            @show c_var_s
-            @show c_var_c
-            mach = maximum(abs.(Vx[idx_chamber-1:end])) / 340.0
-            @show mach
-            @show av_x(Vx)[idx_chamber-1:idx_chamber+1].^2
-            @show ρ[idx_chamber-1:idx_chamber+1]
-            fig2 = Figure(size=(1000, 800))
+            #@show c_var_s
+            #@show c_var_c
+            #mach = maximum(abs.(Vx[idx_chamber-1:end])) / 340.0
+            #@show mach
+            #println("$(dP[idx_solid-8:idx_solid+2])")
+            #@show av_x(Vx)[idx_chamber-1:idx_chamber+1].^2
+            #@show ρ[idx_chamber-1:idx_chamber+1]
+            fig2 = Figure(size=(2000, 800))
             ax1 = Axis(fig2[2,1], title="Pressure, time = $(round(t, digits=8))")#, limits=(nothing, nothing, -0.25, 0.25))
             ax2 = Axis(fig2[1,2], title="Velocity")#, limits=(nothing, nothing, -0.25, 0.25))
             ax3 = Axis(fig2[2,2], title="Energy", ylabel="Energy", xlabel="Domain")#, limits=(nothing, nothing, -0.25, 0.25))
             ax4 = Axis(fig2[1,1], title="Density", ylabel="Density", xlabel="Domain")#, limits=(nothing, nothing,-50.0, 3050.0))
+            ax5 = Axis(fig2[3,1], title="Time series air", ylabel="Pressure", xlabel="Total time")#, limits=(nothing, nothing,-50.0, 3050.0))
+            ax6 = Axis(fig2[4,1], title="Time series cham", ylabel="Pressure", xlabel="Total time")#, limits=(nothing, nothing,-50.0, 3050.0))
+            ax7 = Axis(fig2[5,1], title="Time series solid", ylabel="Pressure", xlabel="Total time")#, limits=(nothing, nothing,-50.0, 3050.0))
             #opts = (;linewidth = 2, color = :red)
             # lines!(ax4, xc, values.ρ; opts...)
             # lines!(ax2, xc, values.u; opts...)
@@ -273,7 +328,29 @@ function coupled_wave1D_up()
             lines!(ax3, xc_vec, e)
             scatter!(ax4, xc_vec, ρ)
             lines!(ax4, xc_vec, ρ)
-            
+            scatter!(ax1, xc_vec[idx_solid], P[idx_solid], color=:wheat)
+            scatter!(ax2, xv_vec[idx_solidVx], Vx[idx_solidVx], color=:wheat)
+            scatter!(ax3, xc_vec[idx_solid], e[idx_solid], color=:wheat)
+            scatter!(ax4, xc_vec[idx_solid], ρ[idx_solid], color=:wheat)
+            scatter!(ax1, xc_vec[idx_chamber], P[idx_chamber], color=:red)
+            scatter!(ax2, xv_vec[idx_chamberVx], Vx[idx_chamberVx], color=:red)
+            scatter!(ax3, xc_vec[idx_chamber], e[idx_chamber], color=:red)
+            scatter!(ax4, xc_vec[idx_chamber], ρ[idx_chamber], color=:red)
+            scatter!(ax1, xc_vec[idx_chamber2], P[idx_chamber2], color=:red)
+            scatter!(ax2, xv_vec[idx_chamber2Vx], Vx[idx_chamber2Vx], color=:red)
+            scatter!(ax3, xc_vec[idx_chamber2], e[idx_chamber2], color=:red)
+            scatter!(ax4, xc_vec[idx_chamber2], ρ[idx_chamber2], color=:red)
+            scatter!(ax1, xc_vec[idx_air], P[idx_air], color=:lawngreen)
+            scatter!(ax2, xv_vec[idx_airVx], Vx[idx_airVx], color=:lawngreen)
+            scatter!(ax3, xc_vec[idx_air], e[idx_air], color=:lawngreen)
+            scatter!(ax4, xc_vec[idx_air], ρ[idx_air], color=:lawngreen)
+            #println("Before seismo plotting")
+            # Plots seismograms
+            lines!(ax5, tseismo, Pseismo_air)
+            lines!(ax6, tseismo, Pseismo_cham)
+            lines!(ax7, tseismo, Pseismo_solid_border, label="Border point")
+            lines!(ax7, tseismo, Pseismo_solid_mid, label="Border point -2 to left")
+            #axislegend(ax7, )
             
             #save("../Plots/Navier-Stokes_acoustic_wave/discontinous_initial_condition/$(i).png", fig2)
             display(fig2)
