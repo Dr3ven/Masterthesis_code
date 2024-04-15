@@ -73,7 +73,7 @@ function shock_wave1D_up()
     P[Int((50/100)*nx):end] .= 0.1
     ρ[Int((50/100)*nx):end] .= 0.125
     c = sqrt(K / ρ0)                # speed of sound
-    E .= P./((γ - 1.0)) + 0.5 .* av_x(Vx).^2
+    E .= P./((γ - 1.0)) + 0.5 .* ρ .* av_x(Vx).^2
     e = P ./ (γ - 1.0) ./ ρ
 
     dt = 1.0e-6#8 #dx / (c * 4.0)                      # time step size
